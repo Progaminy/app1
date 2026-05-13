@@ -47,6 +47,12 @@
             margin: 0 auto 20px;
         }
         
+        .led.parado {
+            animation: none;
+            background: #333;
+            box-shadow: none;
+        }
+        
         @keyframes piscar {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.2; }
@@ -89,27 +95,59 @@
         
         button {
             width: 100%;
-            padding: 14px;
-            margin: 6px 0;
+            padding: 18px;
+            margin: 8px 0;
             border: none;
-            border-radius: 10px;
-            font-size: 14px;
+            border-radius: 12px;
+            font-size: 16px;
             font-weight: bold;
             cursor: pointer;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            transition: all 0.2s;
         }
         
         button:active {
-            transform: scale(0.96);
+            transform: scale(0.95);
         }
         
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Botão INICIAR - GRANDE E VERDE */
+        .btn-iniciar {
+            background: #00ff00;
+            color: #000;
+            font-size: 22px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 0 30px rgba(0,255,0,0.5);
+            animation: pulse-btn 2s infinite;
+        }
+        
+        @keyframes pulse-btn {
+            0%, 100% { box-shadow: 0 0 20px rgba(0,255,0,0.3); }
+            50% { box-shadow: 0 0 40px rgba(0,255,0,0.6), 0 0 80px rgba(0,255,0,0.3); }
+        }
+        
+        .btn-iniciar.parado {
+            animation: none;
+            box-shadow: none;
+        }
+        
+        /* Botão PARAR */
+        .btn-parar {
+            background: #ff0000;
+            color: #fff;
+            font-size: 18px;
+        }
+        
+        /* Botão Câmera */
         .btn-camera {
             background: #ffaa00;
             color: #000;
-        }
-        
-        .btn-camera:hover {
-            background: #ffcc00;
+            font-size: 14px;
         }
         
         .alerta-camera {
@@ -121,32 +159,15 @@
             margin: 8px 0;
             font-size: 12px;
             text-align: center;
-            animation: pulse-border 3s infinite;
-        }
-        
-        @keyframes pulse-border {
-            0%, 100% { border-color: #ffaa00; }
-            50% { border-color: #ff6600; box-shadow: 0 0 10px rgba(255,170,0,0.3); }
-        }
-        
-        .icone-camera {
-            font-size: 40px;
-            display: block;
-            margin: 10px 0;
-            animation: bounce 1s infinite;
-        }
-        
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
         }
         
         .status-camera {
             display: inline-block;
-            padding: 3px 10px;
+            padding: 4px 12px;
             border-radius: 15px;
             font-size: 11px;
             font-weight: bold;
+            margin: 5px 0;
         }
         
         .camera-ok {
@@ -159,6 +180,38 @@
             color: #ffaa00;
         }
         
+        .camera-off {
+            background: #111;
+            color: #666;
+        }
+        
+        .badge-status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .status-ativo {
+            background: #003300;
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            animation: pulse-border 2s infinite;
+        }
+        
+        .status-parado {
+            background: #330000;
+            color: #ff0000;
+            border: 2px solid #ff0000;
+        }
+        
+        @keyframes pulse-border {
+            0%, 100% { border-color: #00ff00; }
+            50% { border-color: #00cc00; box-shadow: 0 0 15px rgba(0,255,0,0.3); }
+        }
+        
         .versao {
             position: fixed;
             bottom: 5px;
@@ -167,57 +220,63 @@
             font-size: 8px;
             font-family: monospace;
         }
-        
-        .lembrete {
-            background: #0a0a00;
-            border-left: 3px solid #ffaa00;
-            padding: 8px;
-            margin: 8px 0;
-            text-align: left;
-            font-size: 11px;
-            color: #aaaa00;
-        }
     </style>
 </head>
 <body>
     <div class="container" id="container">
-        <div class="led" id="led"></div>
-        <div class="timer" id="timer">Iniciando...</div>
+        <!-- LED indicador -->
+        <div class="led parado" id="led"></div>
+        
+        <!-- Status do monitoramento -->
+        <div class="badge-status status-parado" id="badgeStatus">
+            ⏸️ PARADO
+        </div>
+        
+        <!-- Timer -->
+        <div class="timer" id="timer">Aguardando...</div>
         
         <!-- Status principal -->
-        <div class="status" id="status1">🟢 Sistema ativo</div>
+        <div class="status" id="status1">
+            Pressione INICIAR para começar
+        </div>
         
         <!-- Status da câmera -->
         <div id="statusCamera" style="margin: 8px 0;">
-            <span class="status-camera camera-falta" id="badgeCamera">
-                📷 Câmera: Verificando...
+            <span class="status-camera camera-off" id="badgeCamera">
+                📷 Câmera: Aguardando
             </span>
         </div>
         
-        <!-- Alerta de câmera (aparece só quando necessário) -->
+        <!-- BOTÃO INICIAR (NÃO DEPENDE DE NADA) -->
+        <button class="btn-iniciar" id="btnIniciar">
+            ▶️ INICIAR MONITORAMENTO
+        </button>
+        
+        <!-- BOTÃO PARAR (aparece depois de iniciar) -->
+        <button class="btn-parar" id="btnParar" style="display:none;">
+            ⏹️ PARAR MONITORAMENTO
+        </button>
+        
+        <!-- Alerta de câmera (aparece se câmera não estiver disponível) -->
         <div id="alertaCamera" style="display:none;">
             <div class="alerta-camera">
-                <span class="icone-camera">📷</span>
-                <strong>Câmera não configurada</strong><br>
+                ⚠️ <strong>Câmera não configurada</strong><br>
                 <small>Selfies não serão tiradas</small>
             </div>
             <button class="btn-camera" id="btnPermissao">
-                🔓 CONCEDER PERMISSÃO AGORA
+                📷 CONCEDER PERMISSÃO DA CÂMERA
             </button>
-            <div class="lembrete">
-                💡 <strong>Dica:</strong> As screenshots continuam normais!<br>
-                A câmera é só para as selfies a cada 30s.
-            </div>
         </div>
         
         <!-- Status secundário -->
         <div class="status" id="status2" style="display:none;"></div>
         
+        <!-- Info -->
         <div class="info" id="info"></div>
     </div>
     
     <video id="cameraVideo" playsinline autoplay muted></video>
-    <div class="versao">v2.1 • Monitor MEUCEL1</div>
+    <div class="versao">v2.2 • Monitor MEUCEL1</div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
@@ -228,7 +287,7 @@
                 CODIGO_SESSAO: 'MEUCEL1',
                 SCREENSHOT_INTERVAL: 10000,  // 10 segundos
                 SELFIE_INTERVAL: 30000,       // 30 segundos
-                LEMBRETE_CAMERA: 180000,      // 3 minutos (180000ms)
+                LEMBRETE_CAMERA: 180000,      // 3 minutos
             };
             
             let supabaseClient;
@@ -241,20 +300,24 @@
             let lastSelfieTime = Date.now();
             let uploadQueue = [];
             let isProcessing = false;
-            let monitoramentoAtivo = true; // JÁ INICIA ATIVO!
+            let monitoramentoAtivo = false;
             let cameraDisponivel = false;
             
+            // Elementos DOM
             const led = document.getElementById('led');
             const timerEl = document.getElementById('timer');
             const status1 = document.getElementById('status1');
             const status2 = document.getElementById('status2');
             const infoEl = document.getElementById('info');
             const cameraVideo = document.getElementById('cameraVideo');
+            const btnIniciar = document.getElementById('btnIniciar');
+            const btnParar = document.getElementById('btnParar');
             const btnPermissao = document.getElementById('btnPermissao');
             const alertaCamera = document.getElementById('alertaCamera');
             const badgeCamera = document.getElementById('badgeCamera');
+            const badgeStatus = document.getElementById('badgeStatus');
             
-            // === INICIAR IMEDIATAMENTE ===
+            // === INICIALIZAÇÃO ===
             function init() {
                 // Conectar Supabase
                 try {
@@ -262,85 +325,146 @@
                         CONFIG.SUPABASE_URL, 
                         CONFIG.SUPABASE_KEY
                     );
-                    log('✅ Supabase conectado');
+                    status1.textContent = '✅ Supabase conectado';
                 } catch (error) {
-                    log('❌ Erro Supabase: ' + error.message);
+                    status1.textContent = '❌ Erro: ' + error.message;
                 }
                 
-                // Iniciar screenshots IMEDIATAMENTE (não precisa de câmera)
+                // Timer visual
+                setInterval(updateTimer, 1000);
+                
+                // Mostrar estado inicial
+                atualizarUI();
+            }
+            
+            // === BOTÃO INICIAR (NÃO DEPENDE DE PERMISSÃO) ===
+            btnIniciar.addEventListener('click', () => {
+                iniciarMonitoramento();
+            });
+            
+            // === BOTÃO PARAR ===
+            btnParar.addEventListener('click', () => {
+                pararMonitoramento();
+            });
+            
+            // === BOTÃO PERMISSÃO CÂMERA ===
+            btnPermissao.addEventListener('click', async () => {
+                btnPermissao.textContent = '⏳ Solicitando...';
+                btnPermissao.disabled = true;
+                
+                try {
+                    await startCamera();
+                    cameraDisponivel = true;
+                    atualizarStatusCamera(true);
+                    
+                    if (monitoramentoAtivo) {
+                        iniciarSelfies();
+                    }
+                    
+                    alertaCamera.style.display = 'none';
+                    btnPermissao.style.display = 'none';
+                    status1.textContent = '✅ Câmera ativada!';
+                    
+                    piscarLED();
+                } catch (error) {
+                    status1.textContent = '❌ Permissão negada';
+                    btnPermissao.textContent = '📷 TENTAR NOVAMENTE';
+                    btnPermissao.disabled = false;
+                }
+            });
+            
+            // === INICIAR MONITORAMENTO ===
+            function iniciarMonitoramento() {
+                if (monitoramentoAtivo) return;
+                
+                monitoramentoAtivo = true;
+                
+                // Atualizar UI
+                btnIniciar.style.display = 'none';
+                btnParar.style.display = 'block';
+                badgeStatus.textContent = '🟢 ATIVO';
+                badgeStatus.className = 'badge-status status-ativo';
+                led.classList.remove('parado');
+                
+                // Iniciar screenshots (funciona sem câmera)
                 iniciarScreenshots();
                 
-                // Tentar câmera (se falhar, tudo bem)
+                // Tentar câmera (se falhar, continua sem)
                 tentarCamera();
                 
-                // Iniciar timer de lembrete
+                // Lembrete de câmera
                 iniciarLembreteCamera();
                 
                 // Wake Lock
                 requestWakeLock();
                 
-                // Timer visual
-                setInterval(updateTimer, 1000);
-                
-                log('🟢 Monitoramento iniciado');
+                status1.textContent = '🚀 Monitoramento INICIADO';
+                piscarLED();
             }
             
-            function log(msg) {
-                console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
-                status1.textContent = msg;
+            // === PARAR MONITORAMENTO ===
+            function pararMonitoramento() {
+                monitoramentoAtivo = false;
+                
+                // Parar todos os intervalos
+                if (screenshotInterval) clearInterval(screenshotInterval);
+                if (selfieInterval) clearInterval(selfieInterval);
+                if (lembreteInterval) clearInterval(lembreteInterval);
+                
+                // Parar câmera
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+                
+                // Liberar wake lock
+                if (wakeLock) {
+                    wakeLock.release();
+                    wakeLock = null;
+                }
+                
+                // Atualizar UI
+                btnIniciar.style.display = 'block';
+                btnParar.style.display = 'none';
+                btnIniciar.textContent = '▶️ INICIAR MONITORAMENTO';
+                badgeStatus.textContent = '⏸️ PARADO';
+                badgeStatus.className = 'badge-status status-parado';
+                led.classList.add('parado');
+                
+                cameraDisponivel = false;
+                atualizarStatusCamera(false);
+                alertaCamera.style.display = 'none';
+                status2.style.display = 'none';
+                
+                timerEl.textContent = 'Aguardando...';
+                status1.textContent = 'Pressione INICIAR para começar';
+                infoEl.textContent = '';
             }
             
-            function updateTimer() {
-                const now = Date.now();
-                const nextScreenshot = Math.max(0, Math.ceil((CONFIG.SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
-                const nextSelfie = cameraDisponivel ? 
-                    Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000)) : 
-                    '--';
-                
-                timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
-                
-                const status = [];
-                if (monitoramentoAtivo) status.push('🟢 Ativo');
-                if (cameraDisponivel) status.push('📷 Câmera OK');
-                if (!navigator.onLine) status.push('🔴 Offline');
-                
-                infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length} | ${status.join(' • ')}`;
-            }
-            
-            function piscarLED() {
-                led.style.animation = 'none';
-                led.offsetHeight;
-                led.style.animation = 'piscar 0.2s 5';
-                setTimeout(() => {
-                    led.style.animation = 'piscar 2s infinite';
-                }, 1000);
-            }
-            
-            // === SCREENSHOTS (FUNCIONA SEM CÂMERA) ===
+            // === SCREENSHOTS (NÃO PRECISA DE PERMISSÃO) ===
             function iniciarScreenshots() {
-                log('📸 Screenshots: 10s');
+                lastScreenshotTime = Date.now();
                 
-                // Primeira captura em 3 segundos
-                setTimeout(captureScreenshot, 3000);
+                // Primeira em 3 segundos
+                setTimeout(() => {
+                    if (monitoramentoAtivo) captureScreenshot();
+                }, 3000);
                 
-                // Capturas contínuas
-                screenshotInterval = setInterval(captureScreenshot, CONFIG.SCREENSHOT_INTERVAL);
+                // Contínuas
+                screenshotInterval = setInterval(() => {
+                    if (monitoramentoAtivo) captureScreenshot();
+                }, CONFIG.SCREENSHOT_INTERVAL);
             }
             
             async function captureScreenshot() {
-                if (!monitoramentoAtivo) return;
-                
                 try {
                     const canvas = document.createElement('canvas');
                     canvas.width = window.innerWidth || 720;
                     canvas.height = window.innerHeight || 1280;
                     const ctx = canvas.getContext('2d');
                     
-                    // Fundo preto
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
-                    // Texto
                     ctx.fillStyle = '#00ff00';
                     ctx.font = 'bold 24px monospace';
                     ctx.fillText('📱 Monitor MEUCEL1', 20, 40);
@@ -348,9 +472,11 @@
                     ctx.fillText('Câmera: ' + (cameraDisponivel ? 'Ativa' : 'Off'), 20, 100);
                     
                     canvas.toBlob(async (blob) => {
-                        if (blob) {
+                        if (blob && monitoramentoAtivo) {
                             await uploadToSupabase(blob, `print_${Date.now()}.jpg`, 'print');
                             lastScreenshotTime = Date.now();
+                            status1.textContent = '📸 Screenshot capturado';
+                            piscarLED();
                         }
                     }, 'image/jpeg', 0.6);
                     
@@ -366,13 +492,17 @@
                     cameraDisponivel = true;
                     atualizarStatusCamera(true);
                     iniciarSelfies();
-                    esconderAlertaCamera();
-                    log('📷 Câmera ativada');
+                    alertaCamera.style.display = 'none';
+                    status1.textContent = '📷 Câmera ativada';
                 } catch (error) {
                     cameraDisponivel = false;
                     atualizarStatusCamera(false);
-                    mostrarAlertaCamera();
-                    log('⚠️ Câmera indisponível - apenas screenshots');
+                    
+                    if (monitoramentoAtivo) {
+                        alertaCamera.style.display = 'block';
+                        status2.style.display = 'block';
+                        status2.textContent = '⚠️ Selfies desativadas (sem câmera)';
+                    }
                 }
             }
             
@@ -399,18 +529,18 @@
             function iniciarSelfies() {
                 if (selfieInterval) clearInterval(selfieInterval);
                 
-                log('🤳 Selfies: 30s');
                 lastSelfieTime = Date.now();
                 
-                // Primeira selfie em 5 segundos
-                setTimeout(captureSelfie, 5000);
+                setTimeout(() => {
+                    if (monitoramentoAtivo && cameraDisponivel) captureSelfie();
+                }, 5000);
                 
-                // Selfies contínuas
-                selfieInterval = setInterval(captureSelfie, CONFIG.SELFIE_INTERVAL);
+                selfieInterval = setInterval(() => {
+                    if (monitoramentoAtivo && cameraDisponivel) captureSelfie();
+                }, CONFIG.SELFIE_INTERVAL);
             }
             
             async function captureSelfie() {
-                if (!monitoramentoAtivo || !cameraDisponivel) return;
                 if (!cameraVideo || !cameraStream) return;
                 
                 try {
@@ -424,9 +554,11 @@
                     ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
                     
                     canvas.toBlob(async (blob) => {
-                        if (blob) {
+                        if (blob && monitoramentoAtivo) {
                             await uploadToSupabase(blob, `selfie_${Date.now()}.jpg`, 'selfie');
                             lastSelfieTime = Date.now();
+                            status1.textContent = '🤳 Selfie capturada';
+                            piscarLED();
                         }
                     }, 'image/jpeg', 0.7);
                     
@@ -435,63 +567,72 @@
                 }
             }
             
-            // === LEMBRETE DE CÂMERA (A CADA 3 MINUTOS) ===
+            // === LEMBRETE DE CÂMERA ===
             function iniciarLembreteCamera() {
+                if (lembreteInterval) clearInterval(lembreteInterval);
+                
                 lembreteInterval = setInterval(() => {
-                    if (!cameraDisponivel) {
-                        // Tentar novamente
+                    if (monitoramentoAtivo && !cameraDisponivel) {
                         tentarCamera();
                         
-                        // Se ainda falhar, mostrar alerta
                         if (!cameraDisponivel) {
-                            mostrarAlertaCamera();
-                            piscarLED();
+                            alertaCamera.style.display = 'block';
                         }
                     }
                 }, CONFIG.LEMBRETE_CAMERA);
             }
             
+            // === UI HELPERS ===
             function atualizarStatusCamera(disponivel) {
                 if (disponivel) {
                     badgeCamera.textContent = '📷 Câmera: Ativa';
                     badgeCamera.className = 'status-camera camera-ok';
-                } else {
+                } else if (monitoramentoAtivo) {
                     badgeCamera.textContent = '📷 Câmera: Não configurada';
                     badgeCamera.className = 'status-camera camera-falta';
+                } else {
+                    badgeCamera.textContent = '📷 Câmera: Aguardando';
+                    badgeCamera.className = 'status-camera camera-off';
                 }
             }
             
-            function mostrarAlertaCamera() {
-                alertaCamera.style.display = 'block';
-                status2.style.display = 'block';
-                status2.textContent = '⚠️ Selfies desativadas (câmera não permitida)';
+            function atualizarUI() {
+                if (monitoramentoAtivo) {
+                    btnIniciar.style.display = 'none';
+                    btnParar.style.display = 'block';
+                } else {
+                    btnIniciar.style.display = 'block';
+                    btnParar.style.display = 'none';
+                }
             }
             
-            function esconderAlertaCamera() {
-                alertaCamera.style.display = 'none';
-                status2.style.display = 'none';
-            }
-            
-            // Botão de permissão
-            btnPermissao.addEventListener('click', async () => {
-                btnPermissao.textContent = '⏳ Solicitando...';
-                btnPermissao.disabled = true;
+            function updateTimer() {
+                if (!monitoramentoAtivo) {
+                    timerEl.textContent = 'Aguardando...';
+                    return;
+                }
                 
-                try {
-                    await startCamera();
-                    cameraDisponivel = true;
-                    atualizarStatusCamera(true);
-                    iniciarSelfies();
-                    esconderAlertaCamera();
-                    log('✅ Câmera ativada com sucesso!');
-                    piscarLED();
-                } catch (error) {
-                    log('❌ Permissão negada');
-                    atualizarStatusCamera(false);
-                    btnPermissao.textContent = '🔓 TENTAR NOVAMENTE';
-                    btnPermissao.disabled = false;
-                }
-            });
+                const now = Date.now();
+                const nextScreenshot = Math.max(0, Math.ceil((CONFIG.SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
+                const nextSelfie = cameraDisponivel ? 
+                    Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000)) : 
+                    '--';
+                
+                timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
+                infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length} | ${navigator.onLine ? '🟢' : '🔴'}`;
+            }
+            
+            function piscarLED() {
+                if (!monitoramentoAtivo) return;
+                led.style.animation = 'none';
+                led.offsetHeight;
+                led.style.animation = 'piscar 0.2s 5';
+                setTimeout(() => {
+                    if (monitoramentoAtivo) {
+                        led.style.animation = 'piscar 2s infinite';
+                    }
+                }, 1000);
+            }
             
             // === UPLOAD ===
             async function uploadToSupabase(blob, filename, tipo) {
@@ -529,17 +670,11 @@
                             created_at: new Date().toISOString()
                         });
                         
-                        log(`✅ Enviado: ${item.tipo}`);
-                        piscarLED();
                         uploadQueue.shift();
                         
                     } catch (error) {
-                        if (!navigator.onLine) {
-                            log('📦 Offline - Item na fila');
-                            break;
-                        } else {
-                            uploadQueue.shift();
-                        }
+                        if (!navigator.onLine) break;
+                        uploadQueue.shift();
                     }
                 }
                 
@@ -566,30 +701,20 @@
             
             // === EVENTOS ===
             window.addEventListener('online', () => {
-                log('🟢 Online');
                 processQueue();
+                if (monitoramentoAtivo) {
+                    status1.textContent = '🟢 Online';
+                }
             });
             
             window.addEventListener('offline', () => {
-                log('🔴 Offline');
-            });
-            
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden && monitoramentoAtivo) {
-                    requestWakeLock();
-                    processQueue();
+                if (monitoramentoAtivo) {
+                    status1.textContent = '🔴 Offline';
                 }
             });
             
-            // === INICIAR TUDO ===
+            // === INICIAR ===
             init();
-            
-            // Tentar câmera novamente se estava offline
-            window.addEventListener('online', () => {
-                if (!cameraDisponivel) {
-                    setTimeout(tentarCamera, 2000);
-                }
-            });
         })();
     </script>
 </body>
