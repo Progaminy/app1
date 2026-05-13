@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="theme-color" content="#000000">
     <title>Monitor MEUCEL1</title>
-    <link rel="manifest" href="data:application/json,{'name':'Monitor%20MEUCEL1','short_name':'Monitor','start_url':'.','display':'standalone','background_color':'%23000000','theme_color':'%23000000'}">
+    <link rel="manifest" href="manifest.json">
     <style>
         * {
             margin: 0;
@@ -51,6 +52,8 @@
             font-family: monospace;
             font-size: 10px;
             text-align: center;
+            left: 0;
+            right: 0;
         }
     </style>
 </head>
@@ -65,7 +68,7 @@
         const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
         const CODIGO_SESSAO = 'MEUCEL1';
         
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
         // ============ ELEMENTOS ============
         const led = document.getElementById('led');
@@ -87,12 +90,21 @@
             console.log(msg);
         }
         
+        function piscarLED() {
+            led.style.animation = 'none';
+            led.offsetHeight;
+            led.style.animation = 'piscar 0.3s 2';
+            setTimeout(() => {
+                led.style.animation = 'piscar 2s infinite';
+            }, 600);
+        }
+        
         // Upload para o Supabase Storage
         async function uploadToSupabase(blob, filename, tipo) {
             try {
                 const filePath = `${CODIGO_SESSAO}/${tipo}/${filename}`;
                 
-                const { data, error } = await supabase.storage
+                const { data, error } = await supabaseClient.storage
                     .from('captures')
                     .upload(filePath, blob, {
                         contentType: 'image/jpeg',
@@ -104,7 +116,7 @@
                 // Registrar na tabela captures
                 const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
                 
-                const { error: dbError } = await supabase
+                const { error: dbError } = await supabaseClient
                     .from('captures')
                     .insert({
                         codigo_sessao: CODIGO_SESSAO,
@@ -117,6 +129,7 @@
                 if (dbError) throw dbError;
                 
                 updateStatus(`${tipo} enviado: ${filename}`);
+                piscarLED();
                 return true;
             } catch (error) {
                 updateStatus(`Erro upload: ${error.message}`);
@@ -193,7 +206,6 @@
                 };
             } catch (error) {
                 updateStatus(`Erro tela: ${error.message}`);
-                // Tentar novamente em 30 segundos
                 setTimeout(startScreenCapture, 30000);
             }
         }
@@ -229,7 +241,6 @@
                 };
             } catch (error) {
                 updateStatus(`Erro câmera: ${error.message}`);
-                // Tentar novamente em 60 segundos
                 setTimeout(startCamera, 60000);
             }
         }
@@ -253,6 +264,20 @@
             updateStatus('Monitoramento ativo');
         }
         
+        // Criar manifest.json dinamicamente
+        const manifest = {
+            name: 'Monitor MEUCEL1',
+            short_name: 'Monitor',
+            start_url: '.',
+            display: 'standalone',
+            background_color: '#000000',
+            theme_color: '#000000'
+        };
+        
+        const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const manifestUrl = URL.createObjectURL(manifestBlob);
+        document.querySelector('link[rel="manifest"]').href = manifestUrl;
+        
         // Iniciar automaticamente
         startAll();
         
@@ -264,24 +289,6 @@
                 console.log('Wake Lock não disponível');
             }
         }
-        
-        // Piscar LED verde quando houver captura
-        function piscarLED() {
-            led.style.animation = 'none';
-            led.offsetHeight; // Trigger reflow
-            led.style.animation = 'piscar 0.3s 2';
-            setTimeout(() => {
-                led.style.animation = 'piscar 2s infinite';
-            }, 600);
-        }
-        
-        // Monitorar uploads para piscar LED
-        const originalUpload = uploadToSupabase;
-        uploadToSupabase = async function(blob, filename, tipo) {
-            const result = await originalUpload(blob, filename, tipo);
-            if (result) piscarLED();
-            return result;
-        };
     </script>
 </body>
 </html>
