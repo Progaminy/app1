@@ -92,17 +92,24 @@
             font-weight: bold;
             cursor: pointer;
             margin-top: 20px;
-            display: none;
+        }
+        
+        .permission-btn:active {
+            transform: scale(0.95);
         }
         
         .permission-btn.show {
-            display: inline-block;
+            display: inline-block !important;
             animation: pulse 1s infinite;
         }
         
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.05); }
+        }
+        
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -116,410 +123,383 @@
             <div class="status" id="status3"></div>
         </div>
         <div class="info" id="info"></div>
-        <button class="permission-btn" id="permissionBtn" onclick="requestPermissions()">
-            📷 Conceder Permissões
+        <button class="permission-btn hidden" id="permissionBtn">
+            📷 CONCEDER PERMISSÕES
         </button>
     </div>
     <video id="cameraVideo" playsinline autoplay muted></video>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Configuração global
-        const CONFIG = {
-            SUPABASE_URL: 'https://vlkobipdenduyismnkpm.supabase.co',
-            SUPABASE_KEY: 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA',
-            CODIGO_SESSAO: 'MEUCEL1',
-            SCREENSHOT_INTERVAL: 10000, // 10 segundos
-            SELFIE_INTERVAL: 30000,     // 30 segundos (teste)
-        };
-        
-        // Variáveis globais
-        let supabaseClient;
-        let cameraStream = null;
-        let screenshotInterval = null;
-        let selfieInterval = null;
-        let wakeLock = null;
-        let lastScreenshotTime = 0;
-        let lastSelfieTime = 0;
-        let uploadQueue = [];
-        let isProcessing = false;
-        
-        // Elementos DOM
-        const led = document.getElementById('led');
-        const timerEl = document.getElementById('timer');
-        const status1 = document.getElementById('status1');
-        const status2 = document.getElementById('status2');
-        const status3 = document.getElementById('status3');
-        const infoEl = document.getElementById('info');
-        const cameraVideo = document.getElementById('cameraVideo');
-        const permissionBtn = document.getElementById('permissionBtn');
-        
-        // Inicialização
-        function init() {
-            try {
-                supabaseClient = window.supabase.createClient(
-                    CONFIG.SUPABASE_URL, 
-                    CONFIG.SUPABASE_KEY
-                );
-                updateStatus('✅ Supabase conectado');
-                checkPermissions();
-            } catch (error) {
-                updateStatus('❌ Erro Supabase: ' + error.message);
-            }
-        }
-        
-        function updateStatus(msg, line = 1) {
-            const statusMap = { 1: status1, 2: status2, 3: status3 };
-            if (statusMap[line]) {
-                statusMap[line].textContent = msg;
-            }
-            console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
-        }
-        
-        function updateTimer() {
-            const now = Date.now();
-            const nextScreenshot = Math.max(0, Math.ceil((CONFIG.SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
-            const nextSelfie = Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000));
+        (function() {
+            // Configuração global
+            const CONFIG = {
+                SUPABASE_URL: 'https://vlkobipdenduyismnkpm.supabase.co',
+                SUPABASE_KEY: 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA',
+                CODIGO_SESSAO: 'MEUCEL1',
+                SCREENSHOT_INTERVAL: 10000,
+                SELFIE_INTERVAL: 30000,
+            };
             
-            timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
-            infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length} | ${navigator.onLine ? '🟢 Online' : '🔴 Offline'}`;
-        }
-        
-        function piscarLED() {
-            led.style.animation = 'none';
-            led.offsetHeight;
-            led.style.animation = 'piscar 0.2s 5';
-            setTimeout(() => {
-                led.style.animation = 'piscar 2s infinite';
-            }, 1000);
-        }
-        
-        // Verificar e solicitar permissões
-        async function checkPermissions() {
-            updateStatus('🔍 Verificando permissões...');
+            let supabaseClient;
+            let cameraStream = null;
+            let screenshotInterval = null;
+            let selfieInterval = null;
+            let wakeLock = null;
+            let lastScreenshotTime = 0;
+            let lastSelfieTime = 0;
+            let uploadQueue = [];
+            let isProcessing = false;
+            let monitoramentoAtivo = false;
             
-            // Verificar câmera
-            try {
-                const result = await navigator.permissions.query({ name: 'camera' });
-                if (result.state === 'granted') {
-                    updateStatus('✅ Permissão da câmera: Concedida');
-                    await startCamera();
-                } else if (result.state === 'prompt') {
-                    updateStatus('⚠️ Permissão da câmera: Necessária');
-                    permissionBtn.classList.add('show');
-                } else {
-                    updateStatus('❌ Permissão da câmera: Negada');
-                    permissionBtn.classList.add('show');
+            const led = document.getElementById('led');
+            const timerEl = document.getElementById('timer');
+            const status1 = document.getElementById('status1');
+            const status2 = document.getElementById('status2');
+            const status3 = document.getElementById('status3');
+            const infoEl = document.getElementById('info');
+            const cameraVideo = document.getElementById('cameraVideo');
+            const permissionBtn = document.getElementById('permissionBtn');
+            
+            // CORREÇÃO 1: Adicionar event listener ao botão
+            permissionBtn.addEventListener('click', requestPermissions);
+            
+            function updateStatus(msg, line = 1) {
+                const statusMap = { 1: status1, 2: status2, 3: status3 };
+                if (statusMap[line]) {
+                    statusMap[line].textContent = msg;
                 }
-            } catch (error) {
-                // Se não conseguir verificar, tentar diretamente
-                updateStatus('⚠️ Verificação de permissão não suportada');
-                permissionBtn.classList.add('show');
-                await startCamera();
+                console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
-        }
-        
-        async function requestPermissions() {
-            updateStatus('📷 Solicitando permissões...');
-            permissionBtn.classList.remove('show');
             
-            try {
-                // Solicitar câmera
-                await startCamera();
+            function updateTimer() {
+                const now = Date.now();
+                const nextScreenshot = Math.max(0, Math.ceil((CONFIG.SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
+                const nextSelfie = Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000));
                 
-                // Solicitar wake lock
-                await requestWakeLock();
-                
-                updateStatus('✅ Todas as permissões concedidas!');
-                
-                // Iniciar capturas
-                startAll();
-            } catch (error) {
-                updateStatus('❌ Erro: ' + error.message);
-                permissionBtn.classList.add('show');
+                timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
+                infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length} | ${navigator.onLine ? '🟢 Online' : '🔴 Offline'}`;
             }
-        }
-        
-        // Upload com fila e retry
-        async function uploadToSupabase(blob, filename, tipo) {
-            // Adicionar à fila
-            uploadQueue.push({ blob, filename, tipo });
             
-            if (!isProcessing) {
-                processQueue();
+            function piscarLED() {
+                led.style.animation = 'none';
+                led.offsetHeight;
+                led.style.animation = 'piscar 0.2s 5';
+                setTimeout(() => {
+                    led.style.animation = 'piscar 2s infinite';
+                }, 1000);
             }
-        }
-        
-        async function processQueue() {
-            if (isProcessing || uploadQueue.length === 0) return;
             
-            isProcessing = true;
+            // CORREÇÃO 2: Verificação de permissão melhorada
+            async function checkPermissions() {
+                updateStatus('🔍 Verificando permissões...');
+                
+                // Tentar iniciar câmera diretamente
+                try {
+                    await startCamera();
+                    updateStatus('✅ Permissão da câmera: Concedida');
+                    permissionBtn.classList.add('hidden');
+                    startAll();
+                } catch (error) {
+                    updateStatus('⚠️ Permissão da câmera necessária');
+                    permissionBtn.classList.remove('hidden');
+                    permissionBtn.classList.add('show');
+                    
+                    if (error.name === 'NotAllowedError') {
+                        updateStatus('❌ Permissão negada anteriormente', 2);
+                        updateStatus('⚠️ Vá em Configurações > Site > Câmera > Permitir', 3);
+                    }
+                }
+            }
             
-            while (uploadQueue.length > 0) {
-                const item = uploadQueue[0];
+            async function requestPermissions() {
+                updateStatus('📷 Solicitando permissões...');
+                permissionBtn.classList.remove('show');
+                permissionBtn.classList.add('hidden');
                 
                 try {
-                    const filePath = `${CONFIG.CODIGO_SESSAO}/${item.tipo}/${item.filename}`;
+                    await startCamera();
+                    await requestWakeLock();
+                    updateStatus('✅ Todas as permissões concedidas!');
+                    startAll();
+                } catch (error) {
+                    updateStatus('❌ Erro: ' + error.message);
+                    permissionBtn.classList.remove('hidden');
+                    permissionBtn.classList.add('show');
+                }
+            }
+            
+            async function uploadToSupabase(blob, filename, tipo) {
+                uploadQueue.push({ blob, filename, tipo });
+                if (!isProcessing) {
+                    processQueue();
+                }
+            }
+            
+            async function processQueue() {
+                if (isProcessing || uploadQueue.length === 0) return;
+                
+                isProcessing = true;
+                
+                while (uploadQueue.length > 0) {
+                    const item = uploadQueue[0];
                     
-                    // Upload para Storage
-                    const { data, error } = await supabaseClient.storage
-                        .from('captures')
-                        .upload(filePath, item.blob, {
-                            contentType: 'image/jpeg',
-                            upsert: false
-                        });
+                    try {
+                        const filePath = `${CONFIG.CODIGO_SESSAO}/${item.tipo}/${item.filename}`;
+                        
+                        const { error } = await supabaseClient.storage
+                            .from('captures')
+                            .upload(filePath, item.blob, {
+                                contentType: 'image/jpeg',
+                                upsert: false
+                            });
+                        
+                        if (error) throw error;
+                        
+                        const publicUrl = `${CONFIG.SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
+                        
+                        const { error: dbError } = await supabaseClient
+                            .from('captures')
+                            .insert({
+                                codigo_sessao: CONFIG.CODIGO_SESSAO,
+                                tipo: item.tipo,
+                                url: publicUrl,
+                                filename: item.filename,
+                                created_at: new Date().toISOString()
+                            });
+                        
+                        if (dbError) throw dbError;
+                        
+                        updateStatus(`✅ ${item.tipo}: ${item.filename}`, 2);
+                        piscarLED();
+                        uploadQueue.shift();
+                        
+                    } catch (error) {
+                        updateStatus(`❌ Erro: ${error.message}`, 2);
+                        
+                        if (!navigator.onLine || error.message.includes('network')) {
+                            updateStatus('📦 Item mantido na fila (offline)', 3);
+                            break;
+                        } else {
+                            uploadQueue.shift();
+                        }
+                    }
+                }
+                
+                isProcessing = false;
+                
+                if (uploadQueue.length > 0) {
+                    setTimeout(processQueue, 5000);
+                }
+            }
+            
+            async function captureScreenshot() {
+                if (!monitoramentoAtivo) return;
+                
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth || 720;
+                    canvas.height = window.innerHeight || 1280;
+                    const ctx = canvas.getContext('2d');
                     
-                    if (error) throw error;
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
                     
-                    const publicUrl = `${CONFIG.SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = 'bold 24px monospace';
+                    ctx.fillText('📱 Monitor MEUCEL1', 20, 40);
+                    ctx.fillText(`🕐 ${new Date().toLocaleString('pt-BR')}`, 20, 70);
                     
-                    // Registrar no banco
-                    const { error: dbError } = await supabaseClient
-                        .from('captures')
-                        .insert({
-                            codigo_sessao: CONFIG.CODIGO_SESSAO,
-                            tipo: item.tipo,
-                            url: publicUrl,
-                            filename: item.filename,
-                            created_at: new Date().toISOString()
-                        });
+                    ctx.font = '16px monospace';
+                    ctx.fillText(`Status: Ativo`, 20, 100);
+                    ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 125);
+                    ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 150);
+                    ctx.fillText(`Fila: ${uploadQueue.length} items`, 20, 175);
                     
-                    if (dbError) throw dbError;
-                    
-                    updateStatus(`✅ ${item.tipo}: ${item.filename}`, 2);
-                    piscarLED();
-                    
-                    // Remover da fila
-                    uploadQueue.shift();
+                    canvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const filename = `print_${Date.now()}.jpg`;
+                            await uploadToSupabase(blob, filename, 'print');
+                            lastScreenshotTime = Date.now();
+                        }
+                    }, 'image/jpeg', 0.6);
                     
                 } catch (error) {
-                    updateStatus(`❌ Erro: ${error.message}`, 2);
+                    console.error('Erro screenshot:', error);
+                }
+            }
+            
+            async function captureSelfie() {
+                if (!monitoramentoAtivo) return;
+                
+                if (!cameraVideo || !cameraStream) {
+                    updateStatus('⚠️ Câmera indisponível', 3);
+                    try {
+                        await startCamera();
+                    } catch(e) {}
+                    return;
+                }
+                
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 480;
+                    canvas.height = 640;
+                    const ctx = canvas.getContext('2d');
                     
-                    // Se for erro de rede, manter na fila
-                    if (!navigator.onLine || error.message.includes('network')) {
-                        updateStatus('📦 Item mantido na fila (offline)', 3);
-                        break;
-                    } else {
-                        uploadQueue.shift(); // Remover item problemático
-                    }
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+                    
+                    canvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const filename = `selfie_${Date.now()}.jpg`;
+                            await uploadToSupabase(blob, filename, 'selfie');
+                            lastSelfieTime = Date.now();
+                        }
+                    }, 'image/jpeg', 0.7);
+                    
+                } catch (error) {
+                    console.error('Erro selfie:', error);
                 }
             }
             
-            isProcessing = false;
-            
-            // Se ainda tem itens, tentar novamente depois
-            if (uploadQueue.length > 0) {
-                setTimeout(processQueue, 5000);
-            }
-        }
-        
-        // Capturas
-        async function captureScreenshot() {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = window.innerWidth || 720;
-                canvas.height = window.innerHeight || 1280;
-                const ctx = canvas.getContext('2d');
-                
-                // Desenhar fundo
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Informações
-                ctx.fillStyle = '#00ff00';
-                ctx.font = 'bold 24px monospace';
-                ctx.fillText('📱 Monitor MEUCEL1', 20, 40);
-                ctx.fillText(`🕐 ${new Date().toLocaleString('pt-BR')}`, 20, 70);
-                
-                ctx.font = '16px monospace';
-                ctx.fillText(`Status: Ativo`, 20, 100);
-                ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 125);
-                ctx.fillText(`Bateria: ${await getBatteryInfo()}`, 20, 150);
-                ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 175);
-                ctx.fillText(`Fila: ${uploadQueue.length} items`, 20, 200);
-                
-                canvas.toBlob(async (blob) => {
-                    if (blob) {
-                        const timestamp = Date.now();
-                        const filename = `print_${timestamp}.jpg`;
-                        await uploadToSupabase(blob, filename, 'print');
-                        lastScreenshotTime = Date.now();
+            async function startCamera() {
+                try {
+                    if (cameraStream) {
+                        cameraStream.getTracks().forEach(track => track.stop());
                     }
-                }, 'image/jpeg', 0.6);
-                
-            } catch (error) {
-                updateStatus(`❌ Screenshot: ${error.message}`, 3);
-            }
-        }
-        
-        async function captureSelfie() {
-            if (!cameraVideo || !cameraStream) {
-                updateStatus('⚠️ Câmera indisponível', 3);
-                await startCamera();
-                return;
-            }
-            
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 480;
-                canvas.height = 640;
-                const ctx = canvas.getContext('2d');
-                
-                // Espelhar selfie
-                ctx.translate(canvas.width, 0);
-                ctx.scale(-1, 1);
-                ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-                
-                canvas.toBlob(async (blob) => {
-                    if (blob) {
-                        const timestamp = Date.now();
-                        const filename = `selfie_${timestamp}.jpg`;
-                        await uploadToSupabase(blob, filename, 'selfie');
-                        lastSelfieTime = Date.now();
-                    }
-                }, 'image/jpeg', 0.7);
-                
-            } catch (error) {
-                updateStatus(`❌ Selfie: ${error.message}`, 3);
-            }
-        }
-        
-        async function getBatteryInfo() {
-            try {
-                if ('getBattery' in navigator) {
-                    const battery = await navigator.getBattery();
-                    return `${Math.round(battery.level * 100)}% ${battery.charging ? '⚡' : '🔋'}`;
+                    
+                    updateStatus('📷 Iniciando câmera...');
+                    
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'user',
+                            width: { ideal: 480 },
+                            height: { ideal: 640 }
+                        },
+                        audio: false
+                    });
+                    
+                    cameraVideo.srcObject = cameraStream;
+                    await cameraVideo.play();
+                    
+                    updateStatus('✅ Câmera ativa', 1);
+                    lastSelfieTime = Date.now();
+                    
+                    return true;
+                } catch (error) {
+                    updateStatus('❌ Câmera: ' + error.message, 1);
+                    throw error;
                 }
-            } catch (e) {}
-            return 'N/A';
-        }
-        
-        // Iniciar câmera
-        async function startCamera() {
-            try {
+            }
+            
+            async function requestWakeLock() {
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        updateStatus('🔒 Tela mantida ativa', 3);
+                        
+                        wakeLock.addEventListener('release', () => {
+                            updateStatus('⚠️ Wake Lock liberado', 3);
+                            if (monitoramentoAtivo) {
+                                setTimeout(requestWakeLock, 1000);
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.log('Wake Lock:', err);
+                }
+            }
+            
+            function keepAlive() {
+                localStorage.setItem('monitor_heartbeat', Date.now().toString());
+                
+                setInterval(() => {
+                    if (monitoramentoAtivo) {
+                        localStorage.setItem('monitor_heartbeat', Date.now().toString());
+                    }
+                }, 1000);
+            }
+            
+            // CORREÇÃO 3: Melhor tratamento de visibilidade
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    updateStatus('📱 App minimizado', 2);
+                } else {
+                    updateStatus('📱 App ativo', 2);
+                    if (monitoramentoAtivo) {
+                        requestWakeLock();
+                        processQueue();
+                    }
+                }
+            });
+            
+            window.addEventListener('online', () => {
+                updateStatus('🟢 Online - Processando fila', 2);
+                processQueue();
+            });
+            
+            window.addEventListener('offline', () => {
+                updateStatus('🔴 Offline - Capturas na fila', 2);
+            });
+            
+            function startAll() {
+                if (monitoramentoAtivo) return;
+                
+                monitoramentoAtivo = true;
+                updateStatus('🚀 Iniciando monitoramento...', 1);
+                
+                lastScreenshotTime = Date.now();
+                lastSelfieTime = Date.now();
+                
+                setTimeout(captureScreenshot, 3000);
+                screenshotInterval = setInterval(captureScreenshot, CONFIG.SCREENSHOT_INTERVAL);
+                
+                setTimeout(captureSelfie, 5000);
+                selfieInterval = setInterval(captureSelfie, CONFIG.SELFIE_INTERVAL);
+                
+                keepAlive();
+                requestWakeLock();
+                
+                updateStatus('✅ Monitoramento ATIVO', 1);
+            }
+            
+            function stopAll() {
+                monitoramentoAtivo = false;
+                
+                if (screenshotInterval) clearInterval(screenshotInterval);
+                if (selfieInterval) clearInterval(selfieInterval);
+                
                 if (cameraStream) {
                     cameraStream.getTracks().forEach(track => track.stop());
                 }
                 
-                updateStatus('📷 Iniciando câmera...');
-                
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 480 },
-                        height: { ideal: 640 }
-                    },
-                    audio: false
-                });
-                
-                cameraVideo.srcObject = cameraStream;
-                await cameraVideo.play();
-                
-                updateStatus('✅ Câmera ativa', 1);
-                lastSelfieTime = Date.now();
-                
-                return true;
-            } catch (error) {
-                updateStatus('❌ Câmera: ' + error.message, 1);
-                throw error;
-            }
-        }
-        
-        // Wake Lock
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    updateStatus('🔒 Tela mantida ativa', 3);
-                    
-                    wakeLock.addEventListener('release', () => {
-                        updateStatus('⚠️ Wake Lock liberado', 3);
-                        setTimeout(requestWakeLock, 1000);
-                    });
+                if (wakeLock) {
+                    wakeLock.release();
                 }
-            } catch (err) {
-                updateStatus('⚠️ Wake Lock indisponível', 3);
-            }
-        }
-        
-        // Manter vivo
-        function keepAlive() {
-            // Usar localStorage como heartbeat
-            localStorage.setItem('monitor_heartbeat', Date.now().toString());
-            
-            // Usar setInterval para prevenir sleep
-            setInterval(() => {
-                localStorage.setItem('monitor_heartbeat', Date.now().toString());
-                // Pequena operação para manter ativo
-                const temp = document.createElement('div');
-                temp.style.display = 'none';
-                document.body.appendChild(temp);
-                document.body.removeChild(temp);
-            }, 1000);
-        }
-        
-        // Eventos de visibilidade
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                updateStatus('📱 App em segundo plano', 2);
-            } else {
-                updateStatus('📱 App ativo', 2);
-                requestWakeLock();
-                // Processar fila ao voltar
-                processQueue();
-            }
-        });
-        
-        // Eventos de rede
-        window.addEventListener('online', () => {
-            updateStatus('🟢 Online - Processando fila', 2);
-            processQueue();
-        });
-        
-        window.addEventListener('offline', () => {
-            updateStatus('🔴 Offline - Capturas na fila', 2);
-        });
-        
-        // Iniciar tudo
-        function startAll() {
-            updateStatus('🚀 Iniciando monitoramento...', 1);
-            
-            // Screenshots
-            lastScreenshotTime = Date.now();
-            setTimeout(captureScreenshot, 3000);
-            screenshotInterval = setInterval(captureScreenshot, CONFIG.SCREENSHOT_INTERVAL);
-            
-            // Selfies
-            setTimeout(captureSelfie, 5000);
-            selfieInterval = setInterval(captureSelfie, CONFIG.SELFIE_INTERVAL);
-            
-            keepAlive();
-            requestWakeLock();
-            
-            updateStatus('✅ Monitoramento ativo', 1);
-        }
-        
-        // Limpeza
-        function stopAll() {
-            if (screenshotInterval) clearInterval(screenshotInterval);
-            if (selfieInterval) clearInterval(selfieInterval);
-            
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
             }
             
-            if (wakeLock) {
-                wakeLock.release();
+            // Inicialização
+            function init() {
+                try {
+                    supabaseClient = window.supabase.createClient(
+                        CONFIG.SUPABASE_URL, 
+                        CONFIG.SUPABASE_KEY
+                    );
+                    updateStatus('✅ Supabase conectado');
+                    checkPermissions();
+                } catch (error) {
+                    updateStatus('❌ Erro: ' + error.message);
+                    permissionBtn.classList.remove('hidden');
+                    permissionBtn.classList.add('show');
+                }
             }
-        }
-        
-        window.addEventListener('beforeunload', stopAll);
-        
-        // Timer
-        setInterval(updateTimer, 1000);
-        
-        // Iniciar
-        init();
+            
+            window.addEventListener('beforeunload', stopAll);
+            setInterval(updateTimer, 1000);
+            
+            init();
+        })();
     </script>
 </body>
 </html>
