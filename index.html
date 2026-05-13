@@ -20,11 +20,11 @@
             width: 100vw;
             height: 100vh;
             height: 100dvh;
+            overflow-y: auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         
         .container {
@@ -51,17 +51,18 @@
         
         .status {
             color: #00ff00;
-            font-size: 14px;
+            font-size: 13px;
             margin: 8px 0;
             font-family: monospace;
-            padding: 10px;
+            padding: 8px;
             background: #0a0a0a;
             border-radius: 8px;
+            word-break: break-word;
         }
         
         .timer {
             color: #008800;
-            font-size: 20px;
+            font-size: 18px;
             font-family: monospace;
             margin: 10px 0;
         }
@@ -85,24 +86,23 @@
         
         button {
             width: 100%;
-            padding: 18px;
+            padding: 16px;
             margin: 8px 0;
             border: none;
             border-radius: 12px;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             cursor: pointer;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         
         button:active {
-            transform: scale(0.95);
+            transform: scale(0.96);
         }
         
         .btn-camera {
             background: #00ff00;
             color: #000;
-            animation: pulse 1.5s infinite;
         }
         
         .btn-config {
@@ -113,35 +113,58 @@
         .btn-iniciar {
             background: #0088ff;
             color: #fff;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 10px #00ff00; }
-            50% { box-shadow: 0 0 30px #00ff00, 0 0 50px #00ff00; }
-        }
-        
-        .hidden {
-            display: none !important;
+            font-size: 18px;
+            padding: 20px;
         }
         
         .alerta {
             background: #1a0000;
             border: 1px solid #ff0000;
             color: #ff4444;
-            padding: 15px;
+            padding: 12px;
             border-radius: 10px;
             margin: 10px 0;
-            font-size: 13px;
+            font-size: 12px;
             text-align: left;
+            line-height: 1.5;
         }
         
         .alerta strong {
             color: #ff6666;
         }
+        
+        .ajuda-box {
+            background: #1a1a00;
+            border: 1px solid #ffaa00;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: left;
+            color: #ffcc00;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .ajuda-box strong {
+            color: #ffaa00;
+        }
+        
+        .btn-entendi {
+            background: #ffaa00;
+            color: #000;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="container">
         <div class="led" id="led"></div>
         <div class="timer" id="timer">Iniciando...</div>
         
@@ -149,23 +172,19 @@
         <div class="status" id="status2" style="display:none;"></div>
         
         <div class="alerta" id="alertaPermissao" style="display:none;">
-            <strong>⚠️ PERMISSÃO DA CÂMERA NEGADA</strong><br><br>
-            Para conceder permissão:<br>
-            1. Clique em <strong>"ABRIR CONFIGURAÇÕES"</strong><br>
-            2. Encontre <strong>"Permissões"</strong><br>
-            3. Ative a <strong>CÂMERA</strong><br>
-            4. Volte para o app
+            <strong>⚠️ PERMISSÃO DA CÂMERA NEGADA</strong><br>
+            O app precisa acessar a câmera para tirar selfies.
         </div>
         
         <button class="btn-camera" id="btnPermissao" style="display:none;">
-            📷 CONCEDER PERMISSÃO DA CÂMERA
+            📷 TENTAR CONCEDER PERMISSÃO
         </button>
         
         <button class="btn-config" id="btnConfig" style="display:none;">
-            ⚙️ ABRIR CONFIGURAÇÕES DO APLICATIVO
+            ⚙️ COMO CONCEDER PERMISSÃO
         </button>
         
-        <button class="btn-iniciar hidden" id="btnIniciar">
+        <button class="btn-iniciar" id="btnIniciar" style="display:none;">
             ▶️ INICIAR MONITORAMENTO
         </button>
         
@@ -205,76 +224,90 @@
             const btnConfig = document.getElementById('btnConfig');
             const btnIniciar = document.getElementById('btnIniciar');
             const alertaPermissao = document.getElementById('alertaPermissao');
+            const container = document.getElementById('container');
             
-            // === NOVOS BOTÕES DE PERMISSÃO ===
-            
-            // Botão 1: Tentar permissão diretamente
+            // Botão: Tentar permissão
             btnPermissao.addEventListener('click', async () => {
-                status1.textContent = '📷 Solicitando permissão da câmera...';
+                status1.textContent = '📷 Solicitando permissão...';
                 btnPermissao.style.display = 'none';
                 
                 try {
                     await startCamera();
-                    // Se funcionou
-                    mostrarMonitoramento();
+                    mostrarSucesso();
                 } catch (error) {
                     if (error.name === 'NotAllowedError') {
-                        // Permissão negada - mostrar opções
                         status1.textContent = '❌ Permissão negada';
                         status2.style.display = 'block';
-                        status2.textContent = 'Use o botão "ABRIR CONFIGURAÇÕES"';
+                        status2.textContent = 'Use o botão "COMO CONCEDER PERMISSÃO"';
+                        btnPermissao.style.display = 'block';
                         btnConfig.style.display = 'block';
                         alertaPermissao.style.display = 'block';
                     } else {
+                        status1.textContent = 'Erro: ' + error.message;
                         btnPermissao.style.display = 'block';
-                        status1.textContent = '❌ Erro: ' + error.message;
                     }
                 }
             });
             
-            // Botão 2: Abrir configurações do Android
+            // Botão: Mostrar instruções
             btnConfig.addEventListener('click', () => {
-                // Tentar abrir configurações do app
-                try {
-                    // Método 1: Intent para configurações do app
-                    window.location.href = 'intent://#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=io.kodular.yourpackage;end';
+                // Remover ajuda anterior
+                const ajudaAntiga = document.getElementById('ajudaPermissao');
+                if (ajudaAntiga) ajudaAntiga.remove();
+                
+                const divAjuda = document.createElement('div');
+                divAjuda.id = 'ajudaPermissao';
+                divAjuda.className = 'ajuda-box';
+                divAjuda.innerHTML = `
+                    <strong>🔧 PARA CONCEDER PERMISSÃO:</strong><br><br>
                     
-                    // Método 2: Abrir configurações gerais
-                    setTimeout(() => {
-                        window.location.href = 'android.settings.SETTINGS';
-                    }, 500);
-                } catch(e) {
-                    status1.textContent = '⚠️ Abra manualmente: Configurações > Aplicativos > [Nome do App] > Permissões';
-                }
+                    <strong>Passo 1:</strong> Saia do app<br>
+                    <strong>Passo 2:</strong> Vá em ⚙️ <strong>Configurações</strong><br>
+                    <strong>Passo 3:</strong> Toque em <strong>Aplicativos</strong><br>
+                    <strong>Passo 4:</strong> Encontre este app na lista<br>
+                    <strong>Passo 5:</strong> Toque em <strong>Permissões</strong><br>
+                    <strong>Passo 6:</strong> Ative a <strong>Câmera</strong> 📷<br>
+                    <strong>Passo 7:</strong> Volte para o app<br><br>
+                    
+                    <em>Depois clique em "TENTAR CONCEDER PERMISSÃO"</em>
+                    
+                    <button class="btn-entendi" onclick="
+                        document.getElementById('ajudaPermissao').remove();
+                        document.getElementById('status1').textContent = '✅ Siga os passos acima';
+                    ">✅ ENTENDI</button>
+                `;
+                
+                container.appendChild(divAjuda);
+                divAjuda.scrollIntoView({ behavior: 'smooth' });
             });
             
-            // Botão 3: Iniciar monitoramento
+            // Botão: Iniciar monitoramento
             btnIniciar.addEventListener('click', () => {
                 startAll();
                 btnIniciar.style.display = 'none';
+                status2.style.display = 'none';
             });
             
-            function mostrarMonitoramento() {
+            function mostrarSucesso() {
                 btnPermissao.style.display = 'none';
                 btnConfig.style.display = 'none';
                 alertaPermissao.style.display = 'none';
-                btnIniciar.classList.remove('hidden');
+                btnIniciar.style.display = 'block';
                 status1.textContent = '✅ Permissão concedida!';
                 status2.style.display = 'none';
+                
+                // Remover ajuda se existir
+                const ajuda = document.getElementById('ajudaPermissao');
+                if (ajuda) ajuda.remove();
             }
             
-            // === FUNÇÕES ORIGINAIS ===
-            
-            function updateStatus(msg, isError = false) {
+            function updateStatus(msg) {
                 status1.textContent = msg;
-                if (isError) {
-                    status2.style.display = 'block';
-                    status2.textContent = msg;
-                }
                 console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
             
             function updateTimer() {
+                if (!monitoramentoAtivo) return;
                 const now = Date.now();
                 const nextScreenshot = Math.max(0, Math.ceil((CONFIG.SCREENSHOT_INTERVAL - (now - lastScreenshotTime)) / 1000));
                 const nextSelfie = Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000));
@@ -293,12 +326,10 @@
             }
             
             async function checkPermissions() {
-                updateStatus('🔍 Verificando câmera...');
-                
                 try {
                     await startCamera();
                     updateStatus('✅ Câmera OK!');
-                    btnIniciar.classList.remove('hidden');
+                    btnIniciar.style.display = 'block';
                 } catch (error) {
                     if (error.name === 'NotAllowedError') {
                         updateStatus('❌ Permissão da câmera NEGADA');
@@ -380,7 +411,7 @@
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     ctx.fillStyle = '#00ff00';
-                    ctx.font = 'bold 24px monospace';
+                    ctx.font = 'bold 20px monospace';
                     ctx.fillText('📱 Monitor MEUCEL1', 20, 40);
                     ctx.fillText(new Date().toLocaleString('pt-BR'), 20, 70);
                     
@@ -470,14 +501,13 @@
                 requestWakeLock();
             }
             
-            // Inicialização
             function init() {
                 try {
                     supabaseClient = window.supabase.createClient(
                         CONFIG.SUPABASE_URL, 
                         CONFIG.SUPABASE_KEY
                     );
-                    updateStatus('✅ Conectado ao Supabase');
+                    updateStatus('✅ Conectado');
                     checkPermissions();
                 } catch (error) {
                     updateStatus('❌ Erro: ' + error.message);
